@@ -1,0 +1,14 @@
+{
+  "name": "einvoicing-claude-skills",
+  "description": "ClearTax e-invoicing team Claude Code skills — IND+KSA on-call handover, country runbooks, RCA drafting. Shared for team use.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Vashistha Garg",
+    "email": "vashistha.garg@clear.in"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["e-invoicing", "cleartax", "on-call", "ind", "ksa", "pagerduty", "cubeapm"],
+  "skills": [
+    "./skills/v-oncall-handover"
+  ]
+}

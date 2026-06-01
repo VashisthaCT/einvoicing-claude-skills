@@ -1,0 +1,75 @@
+# Column widths captured from Vashistha's manually-adjusted Coda template tables.
+# Used by scripts/coda_push_handover.py to embed <th style="width:Npx"> when
+# pushing weekly handover doc as HTML to Coda. Coda honors these on table create.
+#
+# After adjusting widths in Coda UI for a new table type, re-export the page as
+# HTML, grep for <th style="width:Npx"> and update this file.
+#
+# Page: Engineering / 8. E-Invoicing Global / ... / EInvoice On-Call / Ind/Gcc Oncall Handover
+# Doc id: LRUx2GW3fq    Page id: canvas-4_oBrW7S-z
+
+ksa_pd:
+  Severity: 150
+  Count: 129
+  Incident: 496
+  PD Service: 317
+  Slack Thread: 150
+
+# Defaults below are educated guesses — adjust manually in Coda once after first
+# push, then re-capture from HTML export and update this file.
+
+ind_pd:
+  # IND PD section is currently a prose paragraph ("None this week" + IRP-routing
+  # callout) — no table needed. Leave empty.
+  {}
+
+noise_false:
+  Region: 80
+  Count: 70
+  Alert: 700
+  PD Service: 430
+
+cfd_ksa:
+  Customer: 160
+  Issue: 320
+  Short-term Fix: 340
+  Long-term Fix: 340
+  Engineering Owner: 200
+  Status: 140
+  Slack Thread: 200
+
+cfd_ind:
+  Customer: 160
+  Issue: 320
+  Short-term Fix: 340
+  Long-term Fix: 340
+  Engineering Owner: 200
+  Status: 140
+  Slack Thread: 200
+
+# Weekly Metrics tables (CubeAPM RPM + mean latency, top 5 endpoints).
+# Same column structure for all 4 — RPM/latency tables share widths.
+
+rpm:
+  "#": 40
+  Endpoint: 380
+  Min (RPM): 90
+  Min @: 200
+  Max (RPM): 90
+  Max @: 200
+  Mean: 90
+
+latency:
+  "#": 40
+  Endpoint: 380
+  Min (ms): 90
+  Min @: 200
+  Max (ms): 90
+  Max @: 200
+  Mean: 90
+
+breach:
+  When (IST): 220
+  Region: 80
+  Issue: 600
+  Status / Owner: 280

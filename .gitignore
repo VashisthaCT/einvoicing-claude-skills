@@ -1,0 +1,7 @@
+.DS_Store
+*.swp
+.idea/
+.vscode/
+.coda_token
+__pycache__/
+*.pyc
