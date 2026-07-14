@@ -1,28 +1,27 @@
 # CLAUDE.md — einvoicing-claude-skills
 
 ## What this is
-ClearTax e-invoicing team Claude Code skills, shared across the IND+KSA on-call rotation. Forked from `VashisthaCT/personal-skills` for team use.
+ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`.
 
 ## Conventions
 - Skills are prefixed `v-` (matching the source repo convention).
-- Skill format: `skills/<name>/SKILL.md` with frontmatter (name, description).
-- Drafts only — no skill auto-sends to Slack / Email / Coda / Git. Output lands locally in `~/Desktop/e-invoicing-be/oncall-handover/2026/`.
+- Skill format: `skills/<name>/SKILL.md` with frontmatter (name, description). The SKILL.md is the **generic engine**; all region-specific facts live in `data/scopes.yaml`.
+- **To add or fix a region, edit `data/scopes.yaml` only** — never hardcode channels / PD prefixes / services / endpoints back into SKILL.md.
+- Drafts only — no skill auto-sends to Slack / Email / Coda / Git. Output location is per-scope (config): IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` (default) + per-scope `output:` overrides in `data/scopes.yaml`.
 
 ## Don't
 - Don't run `git commit` or `git push` from the skill — user does these.
 - Don't auto-send to Slack channels or external DMs. Drafts only.
 - Don't commit handover MDs to `e-invoicing-be` — it's a shared team code repo. Save-only; outgoing on-call decides branching + commit cadence.
 
-## Identifiers (must be customized per user before first run)
+## Configuring scopes (data/scopes.yaml)
 
-Edit `skills/v-oncall-handover/SKILL.md` and replace these with your own identifiers:
+`data/scopes.yaml` is the single source of region config. Top-level keys:
+- `meta` — `default_scope`, `cubeapm_region`, `output` (default output `{repo_path, subdir}`), shared `sev1_channel`.
+- `engineers` / `l2_escalators` — shared rosters for L3 CFD owner attribution (Step 4).
+- `scopes.<key>` — one block per rotation (`ind`, `ksa`, `eu`, `my`, `mea`): `pd_service_prefixes`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `customers`, `notes`.
 
-| Field | Vashistha's value (template) | Where to find yours |
-|---|---|---|
-| Slack user_id | `U087T0SHNCC` | Slack → profile → ⋮ → Copy member ID |
-| Self-DM channel | `D088362AS65` | Right-click your name in Slack → Copy link → ID after `/archives/` |
-| Manager Slack | `U0ABBKV5QDU` (Ayush Jain) | Manager's profile → Copy member ID |
-| Manager DM | `D0AC1AKDJKT` | DM thread with manager → Copy link |
+The `eu` / `my` / `mea` blocks were auto-discovered (Slack/PagerDuty/CubeAPM sweep). **Verify channel IDs, PD prefixes, and generate endpoints against a live week before relying on a region's metrics tables** — discovered values carry a confidence marker in `notes`. To onboard a new rotation, copy an existing block and fill its fields.
 
 ## MCP requirements
 

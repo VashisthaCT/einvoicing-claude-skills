@@ -1,0 +1,262 @@
+# scopes.yaml — region/rotation config for the v-oncall-handover skill.
+#
+# The skill engine (skills/v-oncall-handover/SKILL.md) is GENERIC. Everything
+# region-specific lives here. To add a region (or fix one), edit only this file.
+#
+# `--scope <keys>` selects which top-level `scopes:` blocks to run, e.g.
+#   /v-oncall-handover --scope ind,ksa   (default — one combined doc)
+#   /v-oncall-handover --scope eu
+#   /v-oncall-handover --scope my
+#   /v-oncall-handover --scope mea
+# Multiple scopes -> one combined doc with one section per scope (in the order
+# given). Single scope -> single-region doc.
+#
+# Field reference (per scope):
+#   label                 Human name used in section headings + the summary line.
+#   pd_service_prefixes   Bracketed PagerDuty service prefixes to KEEP. A PD bot
+#                         post is in-scope only if its PD Service starts with one
+#                         of these. (Step 2 filter.)
+#   pd_workload_filter    (optional) Regex over the alert body/workload name. Use
+#                         ONLY for a region that has no dedicated PD service yet and
+#                         whose alerts land on the shared "DevOps Alerts Sev 2"
+#                         service — Step 2 then KEEPS such generic-service posts iff
+#                         the body matches this regex. Omit once the region gets its
+#                         own pd_service_prefix. (MEA today; see its block.)
+#   alert_channels        Slack channels where this region's Sev2 PD bot posts land
+#                         (analog of IND #e-invoicing-pds). {name, id}.
+#   l3_channels           Slack channels carrying this region's customer-facing L3
+#                         threads (Step 4). {name, id}. May be shared.
+#   l3_workflow_bot       The Slack workflow/bot that posts STRUCTURED L3 escalations
+#                         into l3_channels — the canonical CFD source for Step 4.
+#                         {name, id}. A CFD = ONE such bot post (carries a Salesforce
+#                         ticket + JIRA link + Product/Workspace fields); ad-hoc human
+#                         threads are NOT CFDs. Empty = no escalation workflow yet →
+#                         fall back to the reply_count>=5 heuristic + note it.
+#   cubeapm_services      Prod HTTP service names for this region (CubeAPM `service`
+#                         label). Used by the per-region Top-3 tables.
+#   generate_endpoints    The "critical" generate paths for the Critical-API Health
+#                         table (Step 5a). {service, span_name}. span_name format:
+#                         "WebTransaction/SpringController/<path> (<METHOD>)" — but
+#                         here store just the human "<path> (<METHOD>)" tail.
+#   topk_service_regex    Pipe-joined service regex for the Top-3 slowest/error-prone
+#                         queries (Step 5b).
+#   noisy_rule_ids        CubeAPM rule_ids that habitually fire false anomaly alerts
+#                         for this region (Step 3 false-alert hints).
+#   customers             Known customer-name tokens for L3 CFD attribution (Step 4).
+#                         Non-exhaustive hint list; extend as you see new ones.
+#   notes                 Free-text gotchas surfaced per region (routing gaps etc).
+#   output                (optional) Per-scope output-location override {repo_path, subdir}.
+#                         If absent, the scope uses meta.output. Final doc path =
+#                         <repo_path>/<subdir>/oncall-handover-<weekstart>.md ({year}
+#                         expands to the weekstart's year). For a multi-scope combined
+#                         run, the FIRST in-scope block that defines `output:` wins
+#                         (the default ind,ksa run has none → meta.output).
+
+meta:
+  default_scope: [ind, ksa]          # used when --scope is omitted
+  cubeapm_region: in                 # APM cube param for ALL regions (verified: KSA/MEA metrics live in apm-default; region only matters for LOGS)
+  # DEFAULT output location — used by any scope WITHOUT its own `output:` override (i.e. ind, ksa).
+  # Final path = <repo_path>/<subdir>/oncall-handover-<weekstart>.md  ({year} expands to the weekstart's year).
+  output:
+    repo_path: ~/Desktop/e-invoicing-be          # IND/KSA code repo clone (unchanged from the original skill)
+    subdir: "oncall-handover/{year}"             # → ~/Desktop/e-invoicing-be/oncall-handover/2026/oncall-handover-<weekstart>.md
+  sev1_channel:                      # shared cross-team Sev1 PD bot — common to ALL scopes
+    name: "#sev1-engg"
+    id: C08F1GJ9Z24
+
+# --- Shared rosters (used across all scopes for CFD owner attribution, Step 4) ---
+
+engineers:                           # candidate engineering owners (the first to ack/post substantive technical reply wins)
+  - { name: "Sushant Gupta", slack: U0A75MW4VPY }
+  - { name: "Yash Doshi", slack: U08C0D2ULSD }
+  - { name: "Ayush Jain", slack: U0ABBKV5QDU }
+  - { name: "Aquib Jawed", slack: U01FSG6S057 }
+  - { name: "Vinay Hegde", slack: UTUA6G9R6 }
+  - { name: "Vinay Gupta", slack: U01JN2XUQSC }
+  - { name: "Gajjala Kullayappa", slack: U02TGQ66E3B }
+  - { name: "Om Anil" }
+  - { name: "Vaibhav Pawar" }
+  - { name: "Shivkumar" }
+  - { name: "Siddhant" }
+
+l2_escalators:                       # NOT engineering owners — these are the L2 people who escalate L3 threads; never attribute a CFD to them
+  - "Kuwar Siddharth Singh"
+  - "Sarfaraz"
+  - "Ashutosh Barik"
+  - "Kareem.Nawaz"
+  - "Prashant K"
+  - "Raksith Jain"
+
+scopes:
+
+  ind:
+    label: India
+    pd_service_prefixes:
+      - "[E-Invoicing-Ind]"
+      - "[EInv-Ind"
+    alert_channels:
+      - { name: "#e-invoicing-pds", id: C0209C9E153 }
+    l3_channels:
+      - { name: "#einvoice-l3-support", id: C055ABMAVCL }
+    l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
+    cubeapm_services:
+      - einvoicingbe-prod-http
+      - einvoicing-integrations-prod-http
+    generate_endpoints:
+      - { service: einvoicingbe-prod-http, span_name: "v1/einvoices/generate (POST)" }
+      - { service: einvoicingbe-prod-http, span_name: "v1/ewaybill/generate (POST)" }
+      - { service: einvoicing-integrations-prod-http, span_name: "v2/eInvoice/generate (PUT)" }
+      - { service: einvoicing-integrations-prod-http, span_name: "v2/eInvoice/ewaybill (POST)" }
+    topk_service_regex: "einvoicingbe-prod-http|einvoicing-integrations-prod-http"
+    noisy_rule_ids:
+      - "1151"   # E Invoicing India Integration anomaly (call-rate dip)
+      - "1150"   # E-Invoicing India Anomaly (legacy call-rate dip)
+    customers: [Mitsuba, Swiggy, Eicher, "Country Delight", Pidilite, Marico]
+    notes: >
+      IRP routes to Coralogix only — #irp-prod-alerts has ZERO PD bot posts, so IND real
+      PD count from E-Invoicing PD services is typically 0. IRP CrashLoopBackOff incidents
+      land on "Business Platform Alerts Sev1" (different team's PD service) — surface those
+      as a routing-gap callout in prose, NOT in the table.
+
+  ksa:
+    label: KSA / GCC
+    pd_service_prefixes:
+      - "[E-Invoicing-GCC]"
+    alert_channels:
+      - { name: "#einv-gcc-alerts", id: C03L955GFD5 }
+    l3_channels:
+      - { name: "#einvoice-l3-support", id: C055ABMAVCL }
+    l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
+    cubeapm_services:
+      - einvoicingbe-prod-oci-http
+      - einvoicingbe-prod-oci-bulk-http
+    generate_endpoints:
+      - { service: einvoicingbe-prod-oci-http, span_name: "v2/einvoices/generate (POST)" }
+      - { service: einvoicingbe-prod-oci-http, span_name: "v2/einvoices/generate-with-file (POST)" }
+      - { service: einvoicingbe-prod-oci-http, span_name: "v2/einvoices/generate/async (POST)" }
+      - { service: einvoicingbe-prod-oci-http, span_name: "v2/einvoices/generate-with-file-offline (POST)" }
+      - { service: einvoicingbe-prod-oci-http, span_name: "v2/einvoices/generate-with-base64-offline/async (POST)" }
+    topk_service_regex: "einvoicingbe-prod-oci-http|einvoicingbe-prod-oci-bulk-http"
+    noisy_rule_ids:
+      - "1153"   # EInvoicing KSA anomaly (call-rate dip)
+    customers: [MAF, Tabby, Salam, Zamil, Alkhorayef, "Gulf Cryo"]
+    notes: >
+      Many KSA-named anomaly alerts post to the IND PD service after the receiver-group
+      re-route — capture them under whichever PD service they actually posted to, but the
+      combined Noise/False-Alerts table has a Region column for clarity.
+
+  # =====================================================================================
+  # EU / MY / MEA blocks below are AUTO-DISCOVERED (Slack/PagerDuty/CubeAPM sweep,
+  # 2026-06-15). Each value is flagged with a confidence marker in `notes`. The incoming
+  # on-call for that region MUST verify channel IDs, PD prefixes, and generate endpoints
+  # against a live week before trusting the metrics tables.
+  # =====================================================================================
+
+  eu:
+    label: EU / Peppol
+    # Auto-discovered 2026-06-15 — HIGH confidence (verified against ~90d PD incidents + live 7d CubeAPM traffic).
+    output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/eu" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/eu/oncall-handover-<weekstart>.md
+    pd_service_prefixes:
+      - "[E-Invoicing-EU]"        # single PD service POAA504 "Alerts Sev2" carries BOTH urgencies (no separate Sev1 service)
+    alert_channels:
+      - { name: "#einvoicing-global-pds-sev2", id: C0A6G866FH7 }   # misleadingly "global"-named but in practice carries ONLY [E-Invoicing-EU] PD-bot posts today; the pd_service_prefixes filter is what scopes it
+    l3_channels:
+      - { name: "#einvoice-eu-l3-support", id: C0A6XNJG1A4 }       # dedicated EU L3 (Jira project EOCJ); does NOT use the IND/GCC #einvoice-l3-support
+    l3_workflow_bot: { name: "EInvoicing Europe Customer Issues to L3", id: B0A91P9QDEV }   # EU escalation workflow (Jira EOCJ); discovered 2026-06-15, verify on first run
+    cubeapm_services:
+      - einvoicing-core-prod-eu-http
+      - clear-peppol-ap-outbound-prod-eu-http
+      - clear-peppol-ap-inbound-prod-eu-http
+    generate_endpoints:
+      - { service: einvoicing-core-prod-eu-http, span_name: "v1/einvoice/generate (POST)" }            # ~15k/7d — canonical EU document generate (einvoicing-core SaaS, serves BE/FR/PL/DE)
+      - { service: clear-peppol-ap-outbound-prod-eu-http, span_name: "clear-ap/v1/transactions (POST)" } # ~825/7d — AS4 outbound transmit to Peppol network (EU "submit/clearance" leg)
+    topk_service_regex: "einvoicing-core-prod-eu-http|clear-peppol-ap-outbound-prod-eu-http|clear-peppol-ap-inbound-prod-eu-http"
+    noisy_rule_ids:
+      - "1158"   # Einvoicin-Integrations EU Anomaly (call-rate dip)
+      - "1159"   # Einvoicin-Routing EU Anomaly
+      - "1160"   # Einvoicin-Peppol EU Anomaly
+    customers: []   # EU L3 tickets are COUNTRY-keyed (Belgium / France / Poland / Croatia), not customer-name-keyed — add customer tokens here as you see them
+    notes: >
+      HIGH confidence. PD: one service "[E-Invoicing-EU] Alerts Sev2" (POAA504, ct-zurg) carries both
+      High (Sev1-equiv) and Low (Sev2) — no separate Sev1 service. Two-stage flow: einvoicing-core
+      GENERATEs the UBL/PINT doc → clear-peppol-ap OUTBOUND transmits via AS4 (no IRN concept in Peppol).
+      The clear-peppol-ap-INBOUND service is AS4-receive only (no generate span) — kept in topk for breadth,
+      excluded from generate_endpoints. Secondary EU error feed (Coralogix, NOT the PD bot): #einvoicing-eu-prod-alerts
+      (C0A9NPQ8Z9R) — useful signal but not the alert_channel. Caveat: the "global"-named PD channel could in
+      future carry other regions — rely on the [E-Invoicing-EU] prefix filter, not the channel name.
+
+  my:
+    label: Malaysia (MY)
+    # Auto-discovered 2026-06-15 — HIGH confidence (verified against ~90d PD incidents + live 7d CubeAPM traffic).
+    output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/my" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/my/oncall-handover-<weekstart>.md
+    pd_service_prefixes:
+      - "[E-Invoicing-Malaysia]"   # FULL WORD "Malaysia" (not "MY"). Single PD service PGFR06I "Alerts Sev2", both urgencies.
+    alert_channels:
+      - { name: "#einvoicing-malaysia-prod-alerts", id: C07G8593DFV }   # see notes: MY pages arrive as Coralogix P1/P2 alerts fanned out to PD, NOT a classic PD-incident-bot format
+    l3_channels:
+      - { name: "#einvoicing-malaysia-l3-support", id: C076M3ANJN4 }    # dedicated MY L3 (Jira TMALOCJ/IMALOCJ, on-call subteam S07H136RP0E); does NOT use #einvoice-l3-support
+    l3_workflow_bot: { name: "EInvoicing Malaysia Customer Issues to L3", id: B07HAA03K0U }   # MY escalation workflow (Jira TMALOCJ/IMALOCJ); discovered 2026-06-15, verify on first run
+    cubeapm_services:
+      - einvoicing-core-prod-my-http
+      - einvoicing-integrations-prod-my-http
+      - einvoicing-routing-prod-my-http
+    generate_endpoints:
+      - { service: einvoicing-integrations-prod-my-http, span_name: "my/einvoice/v1/documents/generate (POST)" } # ~316k/7d — PRIMARY integration-side generate (highest volume)
+      - { service: einvoicing-core-prod-my-http, span_name: "v1/einvoice/generate (POST)" }                      # ~303k/7d — PRIMARY single-invoice generate
+      - { service: einvoicing-core-prod-my-http, span_name: "v1/einvoice/b2c/generate (POST)" }                  # ~1k/7d — B2C/self-billed consolidated path
+      - { service: einvoicing-core-prod-my-http, span_name: "my/v1/einvoice/consolidate_generate (POST)" }       # ~16/7d — MY consolidated generate (low volume but live)
+    topk_service_regex: "einvoicing-core-prod-my-http|einvoicing-integrations-prod-my-http|einvoicing-routing-prod-my-http"
+    noisy_rule_ids: []   # MY anomaly alerts ("Einvoicing Core My Anomaly", "Routing MY Anomaly") exist but their CubeAPM rule_ids weren't captured — fill in after the first live run
+    customers: [Samling]   # non-exhaustive; product field = "Einvoice Malaysia". Add tokens as you see them.
+    notes: >
+      HIGH confidence on PD prefix + services + endpoints. ROUTING NUANCE: unlike IND/GCC, MY does not have a
+      dedicated PagerDuty-incident-bot channel — its Sev2-class alerts arrive as Coralogix priority alerts
+      (P2=ERROR, P1=CRITICAL) on app "ct-my-prod" that post to #einvoicing-malaysia-prod-alerts AND fan out to
+      PagerDuty (PD service PGFR06I, prefix [E-Invoicing-Malaysia]). VERIFY on first run that Step 2's PD-bot
+      parser actually picks these up — the Slack format is Coralogix-native, so you may need to match on the
+      "[CRITICAL]/[FIRING]" + "[E-Invoicing-Malaysia]" / "einvoicing-malaysia" tokens rather than the IND/GCC
+      PD-bot layout. No -bulk-http service (KSA-only pattern); bulk flows via Kafka topic big-generate_einv_topic_prod.
+      einvoicing-routing-prod-my-http has no generate span (kept in topk regex only).
+
+  mea:
+    label: MEA (UAE / Oman / Jordan)
+    # Auto-discovered 2026-06-15 — MEDIUM overall (services HIGH/verified; PD routing LOW — see notes). MEA e-invoicing is early:
+    # UAE PINT-AE + Oman Fawtara (go-live ~Aug 2026, discovery stage) + Jordan JoFotara. No dedicated PD service exists YET.
+    output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/mea" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md
+    pd_service_prefixes:
+      - "[E-Invoicing-MEA]"   # INFERRED-NOT-VERIFIED — no MEA-specific PD service has fired yet; convention-predicted future prefix. Starts matching automatically once the dedicated service is carved out.
+    alert_channels:
+      - { name: "#einvoicing-mea-pds", id: C0B66JQHD4H }    # dedicated MEA alert channel (created 2026-05-26 by Ayush, core team joined). Empty as of 2026-06-15 → MEA PD section reads "None this week" until a MEA PD service fires here. Add more channels to this list as they are created.
+    # OPTIONAL fallback (left OFF per user preference 2026-06-15). Before the dedicated MEA service/channel is live,
+    # MEA workloads page under the generic shared "DevOps Alerts Sev 2" (PV4Q1O5) in #devops-alerts-sev2 (C08SAGJQXCG).
+    # To capture those in the meantime: add `- { name: "#devops-alerts-sev2", id: C08SAGJQXCG }` to alert_channels
+    # above AND uncomment the next line — Step 2 then keeps DevOps-Alerts posts whose body matches this MEA-workload regex:
+    # pd_workload_filter: "(einvoicing-core|einvoicing-integrations|einvoicing-routing|clear-peppol-ap-(inbound|outbound))-prod-oci-mea-"
+    l3_channels:
+      - { name: "#einvoice-mea-l3-support", id: C0AB8EAH9A6 }   # HIGH confidence, live (Tabby UAE prod issues); Jira project MEA (board 1588). Does NOT use #einvoice-l3-support.
+    l3_workflow_bot: {}   # no dedicated MEA escalation workflow found as of 2026-06-15 → Step 4 falls back to reply_count>=5. Re-check after MEA GA; add the bot here once it exists.
+    cubeapm_services:
+      - einvoicing-core-prod-oci-mea-http
+      - einvoicing-integrations-prod-oci-mea-http
+      - einvoicing-routing-prod-oci-mea-http
+    generate_endpoints:
+      - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/einvoice/generate (POST)" }        # ~298/7d — PRIMARY MEA generate
+      - { service: einvoicing-integrations-prod-oci-mea-http, span_name: "einvoice/v1/documents/send (POST)" } # ~306/7d — Peppol document dispatch/send (4/5-corner submit to AP)
+      - { service: einvoicing-core-prod-oci-mea-http, span_name: "bulk/{mode}/** (POST)" }               # ~137/7d — bulk submit
+      - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/participant/generate (POST)" }      # ~2/7d — Peppol participant registry (PINT-AE/OM), low but live
+      - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/taxpayer/submit (POST)" }           # ~1/7d — taxpayer onboarding submit, low but live
+    topk_service_regex: "einvoicing-core-prod-oci-mea-http|einvoicing-integrations-prod-oci-mea-http|einvoicing-routing-prod-oci-mea-http"
+    noisy_rule_ids: []   # "Einvoicin MEA Anomaly" alerts exist (seen for Tabby UAE prod) but rule_ids weren't captured — fill after first live run
+    customers: [Tabby]   # UAE; non-exhaustive. Add tokens as you see them.
+    notes: >
+      VERIFIED HIGH: CubeAPM services + generate endpoints (live 7d traffic; *-prod-oci-mea-* OCI host pattern
+      confirmed). Alert/PD routing is early-stage. Key facts: (1) NO [E-Invoicing-MEA] PagerDuty service exists
+      today — the prefix above is the convention-predicted future one and will start matching automatically once
+      created. Until then the MEA PD section will read "None this week". (Optional: capture MEA's current pages
+      from the shared "DevOps Alerts Sev 2" via the commented pd_workload_filter recipe above — left OFF by
+      default per user preference; add channels here as they're created.) (2) #einvoicing-mea-pds (C0B66JQHD4H,
+      created 2026-05-26 by Ayush) is the dedicated channel but had zero PD-bot posts as of 2026-06-15 — re-verify
+      once an alert fires into it. (3) #einvoicing-global-pds-sev2 is the EU channel, NOT MEA — do not conflate.
+      (4) NO clear-peppol-ap on MEA OCI — the MEA generate flow runs through einvoicing-core + einvoicing-integrations;
+      the Peppol AP layer lives in the EU region. Re-run discovery for MEA after Oman/UAE GA (~Aug 2026) — endpoint
+      set and PD routing will likely change.
