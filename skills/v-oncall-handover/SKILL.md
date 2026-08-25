@@ -59,11 +59,13 @@ Action Items column: markdown task list (`- [ ] item`) inside an HTML `<ul><li>`
 - [bullets — regression clusters, zombie endpoints, 1h-vs-15min noise notes, filter tweaks]
 ```
 
-Reference canonical example output (IND+KSA, week May 18-24 2026): `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md`.
+Reference canonical example output (IND+KSA, week May 18-24 2026) *was* `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md` — but `/tmp` is ephemeral and the file is usually gone. The structure above plus the `<style>` block in Step 7 are the source of truth.
 
 ## Step 1 — Compute the week window
 
-If `--week-start` not given: compute previous Monday in IST (today if today is Monday, else most recent past Monday).
+If `--week-start` not given: document the **most recent COMPLETE Mon–Sun week** = `(Monday of the current week) − 7 days`. (Run on Mon Jun 29 → weekstart Jun 22; run on Tue Jun 30 → still Jun 22.)
+
+⚠️ **Do NOT** use "today if Monday, else most recent past Monday" — that picks the **in-progress** current week (on Tue it lands on yesterday's Monday), whose `[7d]` metric windows have little/no data and whose handover is incomplete. The week being handed over is the one that just **ended** last Sunday.
 
 ```
 start_ist = <weekstart>T00:00:00+05:30
@@ -118,7 +120,9 @@ For each in-scope PD bot post, run all checks:
    - `cube.kind = anomaly` + query `<> 4` / `< 4` on call-rate → traffic-dip detector. `value < anomaly_prediction` → FALSE (quiet period); during a known outage window → REAL (traffic genuinely dropped).
    - annotation contains `Test alert` / `Notification test` → TEST.
    - `cube.kind = static` (e.g. `Error percentage (High)`, `> 10%` / `> 25%`) → REAL static-threshold breach.
-4. **Same-pattern repeats:** group consecutive same-title alerts → one row with `Count = N`, time range `start – end`. Merge + dedupe Fix/Resolution + Action Items across the group.
+4. **Same-pattern repeats:** group consecutive same-title alerts → one row with `Count = N`, time range `start – end`. Merge + dedupe Fix/Resolution + Action Items across the group. BUT: if two fires of the same alert had **different root causes** (verified in their `#sev1-engg` threads — see #5), split them into separate rows; "same title" ≠ "same incident".
+5. **Sev1 cause lives in `#sev1-engg` — always cross-read it.** The per-region `alert_channels` usually carry ONLY the PD-bot ack/resolve for a Sev1; the human root-cause bridge happens in the shared `#sev1-engg`. For every Sev1 (and any in-scope PD whose per-region thread shows only bot ack/resolve), find the SAME incident's `#sev1-engg` thread (match by incident title + timestamp — the `message_ts` differs per channel, so capture each separately) and read it for the real cause. Do NOT conclude "no human investigation" from the per-region thread alone. _(2026-06-30: both `[E-Invoicing] Circuit breaker ZATCA trigger` Sev1s were diagnosed only in `#sev1-engg` — Jun 24 = a pdfGenerator deploy whose pods got stuck, hitting the print API; Jun 25 = the licensing service's Redis URL not updated in Vault during the Redis→Valkey migration. Neither was a ZATCA issue — the alert is generically named and fires on ANY einvoicing circuit-breaker-open.)_
+6. **Surface dependency / cross-team Sev1s that explain einvoicing symptoms** as a clearly-labelled awareness callout under the relevant region — NOT a row in the einvoicing PD tables, NOT counted as an einvoicing real-PD (that respects the `pd_service_prefixes` keep-filter and the manager's "no non-einvoicing PD services" rule). E.g. a `pdfGenerator`, `Prism-Sev1`, or `licensing` Sev1 in `#sev1-engg` that drove an einvoicing print/generate impact. Label it "not an E-Invoicing PD service — for awareness" and link the `#sev1-engg` thread. _(2026-06-30 example: `Prism-Sev1` OOMKill from oversized Notice-Management PDFs — Prism backs einvoicing print/extraction, so flagged as a dependency callout.)_
 
 Bucket into:
 - **Real** — per-region "Real" table, all 7 columns.
@@ -157,9 +161,11 @@ Group into one sub-table per in-scope region (header `### <label> — N threads`
 
 Use `mcp__clarity-cubeapm__query_metrics_instant`. **Region param = `meta.cubeapm_region`** (`in` — all APM metrics route to `apm-default` regardless of logical region; verified via `list_available_regions`).
 
-**Five evaluation timestamps:**
-- `wk_eval = <weekstart>+7d at 18:30 UTC` (end of Sunday IST) — current week.
-- `baseline_eval_w1 = <weekstart>-21d at 18:30 UTC`, `w2 = -14d`, `w3 = -7d`, `w4 = <weekstart> at 18:30 UTC` — the 4 baseline weeks.
+**Five evaluation timestamps** — each anchor is IST midnight at the END of that week's Sunday (= `00:00 IST` of the following Monday = `18:30 UTC` of the **Sunday**), so each `[7d]` window spans EXACTLY one Mon–Sun IST week:
+- `wk_eval = <weekstart>+6d at 18:30 UTC` (end of this week's Sunday) — current week.
+- `baseline_eval_w4 = <weekstart>-1d at 18:30 UTC` (most-recent prior week), `w3 = -8d`, `w2 = -15d`, `w1 = -22d` (oldest) — the 4 baseline weeks.
+
+⚠️ **Off-by-one fix (2026-06-30):** the earlier formula (`wk_eval = <weekstart>+7d`, baselines at `-21/-14/-7/0d`) anchored **24h late** — each `[7d]` window captured a Tue→Mon span (dropping the week's Monday, bleeding into the next week's Monday) instead of the labelled Mon–Sun week. The anchor is `18:30 UTC` of the week's **Sunday**, i.e. one day BEFORE the following Monday. Sanity-check by converting each anchor back to IST and confirming the `[7d]` window reads `Mon 00:00 → next-Mon 00:00 IST`. (For weekstart Jun 22: wk=Jun 28 18:30Z, w4=Jun 21, w3=Jun 14, w2=Jun 7, w1=May 31 18:30Z.)
 
 **Lookback:** `[7d:1h]` for current week and each prior week (same query shape, 5 anchor points).
 
@@ -182,6 +188,8 @@ Per endpoint compute 6 numbers + 1 flag (`{...}` = the endpoint's `service` + `s
 | Outlier? | `yes` if `wk > 1.5 × 4w_mean` on EITHER p99 OR err%; else `no` | — |
 
 **Query count:** ~8 instant queries per service group (4 weeks × 2 metrics). Run in parallel where possible. The nested `avg_over_time(max_over_time(...[7d:1h])[28d:7d])` shortcut times out at the 30s proxy ceiling — run separate weekly queries.
+
+⚠️ **Parallelism limit (2026-06-30):** the **p99 `[7d:1h]` histogram subqueries are heavy** — a broad one (all `SpringController/v[0-9]+` endpoints × 4 services) fetches ~15k series and takes ~20–25s, right at the 30s proxy ceiling. Running the 5 weekly p99 anchors **in parallel makes 4 of 5 time out** (`context deadline exceeded`). Either (a) run the p99 anchors **sequentially**, or (b) **narrow the `span_name=~` regex** to just the endpoints you need (the in-scope `generate_endpoints` + the top-slowest/error candidates), which drops each query to <10s so a few can run concurrently. The err%/calls queries use `calls_total` (no histogram buckets), are light (~2-4s), and parallelize fine. Recommended flow: 1 broad p99 + 1 broad err% at `wk_eval` (to discover the top-3 candidates), then narrow-regex p99 + err% across the 4 baseline anchors.
 
 Render as one HTML table (wrapped in `<div class="scroll">`): API, Region, Mean wk (ms), Mean 4w avg (ms, legacy 28d aggregate), p99 max-1h wk (s), p99 max-1h 4w mean (s), Err% wk, Err% 4w mean, Outlier?.
 
@@ -295,7 +303,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - **PD `list_incidents` API has empty `assignments[]`** — Slack channels are the source of truth for who-handled-what.
 - **Slack permalinks must use the real `message_ts`** (e.g. `1779497223.046859` → `p1779497223046859`, dot stripped, micros NOT zero-padded). Never compute the ts from a parsed IST timestamp — past 5h30 / off-by-minute link bugs. See Step 2.
 - **Slack `from:@me` doesn't work** — use `from:<@USERID>` angle-bracket form, or `in:<@USERID>` for self-DMs.
-- **Sev1 PDs go to the shared `#sev1-engg` only**, not the per-region alert channel. Sev2 PDs go to the per-region alert channel (config `alert_channels`).
+- **Sev1 PDs always post to the shared `#sev1-engg` (where the human cause bridge happens); they MAY also mirror to the per-region alert channel.** E.g. the `[EInv-GCC] Zatca … Sev1` fires posted to BOTH `#sev1-engg` and `#einv-gcc-alerts`; the per-region copy was bot-only while the cause was in `#sev1-engg` (so the earlier "Sev1 goes to `#sev1-engg` *only*" was wrong — they can appear in both, same incident but a different `message_ts` per channel). Always read the `#sev1-engg` thread for the cause (Step 3 item 5). Sev2 PDs go to the per-region alert channel (config `alert_channels`).
 - **`#sc-reverse-einvoice-pagerduty-alerts` is reverse-einvoice (different team)** — never include.
 - Region-specific routing gaps (e.g. IND IRP → Coralogix only, zero PD posts on `#irp-prod-alerts`) live in each scope's config `notes` — surface them as prose callouts, not table rows.
 
@@ -313,6 +321,10 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - Don't run a scope whose config block is unpopulated (`PENDING DISCOVERY` / empty channels) — tell the user to fill `data/scopes.yaml` first.
 - Don't keep a Critical-API "Outlier Deep-Dive" subsection when 0 outliers triggered.
 - Don't use 15-min buckets for the metrics tables — 1h is the right granularity for sustained-anomaly handover (verified May 2026).
+- Don't auto-pick the in-progress week — weekstart is the most recent COMPLETE Mon–Sun week (Step 1).
+- Don't conclude a Sev1 had "no human investigation" from the per-region channel alone — its cause is almost always in `#sev1-engg` (Step 3 item 5). Cross-read it before writing Fix/Resolution.
+- Don't merge two fires of the same alert title into one row when their threads show different root causes (Step 3 item 4).
+- Don't run the p99 `[7d:1h]` anchors in parallel over all endpoints — 4 of 5 time out. Sequential, or narrow the `span_name` regex (Step 5a parallelism note).
 
 ## Verifiable success criteria
 
