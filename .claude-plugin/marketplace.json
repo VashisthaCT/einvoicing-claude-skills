@@ -1,0 +1,17 @@
+{
+  "name": "einvoicing-team",
+  "owner": {
+    "name": "Vashistha Garg",
+    "email": "vashistha.garg@clear.in"
+  },
+  "metadata": {
+    "description": "ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations."
+  },
+  "plugins": [
+    {
+      "name": "einvoicing-claude-skills",
+      "source": "./",
+      "description": "Config-driven multi-region on-call handover (IND/KSA/EU/MY/MEA). Plugin root is the repo root so the skill can read data/scopes.yaml."
+    }
+  ]
+}

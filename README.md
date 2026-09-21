@@ -32,12 +32,31 @@ scopes:
 
 ## Install
 
+You need read access to this repo and an authenticated `gh` CLI (`gh auth login`, then `gh auth setup-git` so background plugin updates work too).
+
 ```bash
-# In Claude Code
-/plugin install VashisthaCT/einvoicing-claude-skills
+# 1. Verify you can reach the repo at all — if this 404s, ask Vashistha for access
+gh repo view VashisthaCT/einvoicing-claude-skills
 ```
 
-After install, `/v-oncall-handover` is available, or describe the task ("draft this week's KSA on-call handover").
+Then, inside Claude Code — add the marketplace first, then install from it:
+
+```
+/plugin marketplace add VashisthaCT/einvoicing-claude-skills
+/plugin install einvoicing-claude-skills@einvoicing-team
+```
+
+After install, `/v-oncall-handover` is available, or describe the task ("draft this week's EU on-call handover").
+
+> `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugin inside it is `einvoicing-claude-skills`.
+
+**Alternative — run from a clone** (no plugin install, useful for editing `scopes.yaml` as you go):
+
+```bash
+git clone https://github.com/VashisthaCT/einvoicing-claude-skills.git ~/dev/einvoicing-claude-skills
+```
+
+Then start Claude Code from that directory. Step 0 of the skill resolves `data/scopes.yaml` from `${CLAUDE_PLUGIN_ROOT}` when installed as a plugin, else from the repo root, else from `~/dev/einvoicing-claude-skills/`.
 
 ## Configure for your team (edit `data/scopes.yaml`)
 

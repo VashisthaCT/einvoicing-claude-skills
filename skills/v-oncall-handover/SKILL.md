@@ -17,7 +17,15 @@ You are drafting a weekly E-Invoicing on-call handover doc. Run every Monday mor
 
 ## Step 0 — Load config (do this first, every run)
 
-Read `data/scopes.yaml`. Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `customers`, `notes`, and (optional) `output` override.
+Read the config file. **Resolve its path in this order** — a bare relative `data/scopes.yaml` resolves against the session's working directory, which is wrong whenever the user isn't sitting in the repo root:
+
+1. `${CLAUDE_PLUGIN_ROOT}/data/scopes.yaml` — set when installed as a plugin. Use this if `CLAUDE_PLUGIN_ROOT` is set.
+2. `<repo-root>/data/scopes.yaml` — if running inside a clone of this repo (the dir containing `.claude-plugin/`).
+3. `~/dev/einvoicing-claude-skills/data/scopes.yaml` — last-resort fallback for a bare-copied skill.
+
+If none resolve, stop and tell the user the config is missing — do NOT fall back to hardcoded channels or endpoints.
+
+Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `customers`, `notes`, and (optional) `output` override.
 
 **If a requested scope's block is unpopulated** (empty `alert_channels`/`generate_endpoints`, or `notes: PENDING DISCOVERY`): stop and tell the user that scope isn't configured yet, and point them at `data/scopes.yaml` to fill it. Don't fabricate channels/endpoints.
 
