@@ -9,9 +9,9 @@
   },
   "plugins": [
     {
-      "name": "einvoicing-claude-skills",
-      "source": "./",
-      "description": "Config-driven multi-region on-call handover (IND/KSA/EU/MY/MEA). Plugin root is the repo root so the skill can read data/scopes.yaml."
+      "name": "oncall-handover",
+      "source": "./plugins/oncall-handover",
+      "description": "Config-driven multi-region on-call handover (IND/KSA/EU/MY/MEA). Region config lives in the plugin's data/scopes.yaml."
     },
     {
       "name": "pr-review",

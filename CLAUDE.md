@@ -1,13 +1,13 @@
 # CLAUDE.md — einvoicing-claude-skills
 
 ## What this is
-ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`. The repo is one marketplace (`einvoicing-team`) with two plugins: `einvoicing-claude-skills` (source = repo root; the on-call handover) and `pr-review` (`plugins/pr-review/`; `v-pr-review`, needs only an authenticated `gh` CLI).
+ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`. The repo is one marketplace (`einvoicing-team`, manifest in `.claude-plugin/marketplace.json`) with one folder per plugin under `plugins/`: `oncall-handover` (`v-oncall-handover`) and `pr-review` (`v-pr-review`, needs only an authenticated `gh` CLI).
 
 ## Conventions
 - Skills are prefixed `v-` (matching the source repo convention).
-- Skill format: `skills/<name>/SKILL.md` with frontmatter (name, description). The SKILL.md is the **generic engine**; all region-specific facts live in `data/scopes.yaml`.
-- Each plugin has its own `version` in its `plugin.json` — bump the one whose files you change, or existing installs won't update. The root plugin loads only the skills listed in its `plugin.json` `skills`.
-- **To add or fix a region, edit `data/scopes.yaml` only** — never hardcode channels / PD prefixes / services / endpoints back into SKILL.md.
+- Layout: `plugins/<plugin>/.claude-plugin/plugin.json` + `plugins/<plugin>/skills/<skill>/SKILL.md` (frontmatter: name, description). Anything a skill reads at runtime lives inside its plugin folder — an installed plugin gets only its own folder. The on-call SKILL.md is the **generic engine**; all region-specific facts live in `plugins/oncall-handover/data/scopes.yaml`.
+- Each plugin has its own `version` in its `plugin.json` — bump the one whose files you change, or existing installs won't update. New plugin → new folder under `plugins/` + an entry in `.claude-plugin/marketplace.json`.
+- **To add or fix a region, edit `plugins/oncall-handover/data/scopes.yaml` only** — never hardcode channels / PD prefixes / services / endpoints back into SKILL.md.
 - Drafts only — no skill auto-sends to Slack / Email / Coda / Git. One opt-in exception: `v-pr-review --auto-fix` edits the runner's own PR description. Output location is per-scope (config): IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` (default) + per-scope `output:` overrides in `data/scopes.yaml`.
 
 ## Don't
@@ -15,7 +15,7 @@ ClearTax e-invoicing team Claude Code skills, shared across the on-call rotation
 - Don't auto-send to Slack channels or external DMs. Drafts only.
 - Don't commit handover MDs to `e-invoicing-be` — it's a shared team code repo. Save-only; outgoing on-call decides branching + commit cadence.
 
-## Configuring scopes (data/scopes.yaml)
+## Configuring scopes (plugins/oncall-handover/data/scopes.yaml)
 
 `data/scopes.yaml` is the single source of region config. Top-level keys:
 - `meta` — `default_scope`, `cubeapm_region`, `output` (default output `{repo_path, subdir}`), shared `sev1_channel`.
@@ -35,7 +35,7 @@ If any MCP is missing, the skill will degrade gracefully (e.g. skip alert-payloa
 
 ## Tooling quirks (codified during the May 2026 build)
 
-These are detailed in `skills/v-oncall-handover/SKILL.md` under the **Quirks** section. Highlights:
+These are detailed in `plugins/oncall-handover/skills/v-oncall-handover/SKILL.md` under the **Quirks** section. Highlights:
 - CubeAPM `status_code` label value is `"ERROR"` not `"STATUS_CODE_ERROR"` (sight-agent pre-built queries are wrong).
 - Use `histogram_quantiles("phi", 0.99, ...)` plural for vmrange buckets — singular `histogram_quantile(0.99, ...)` returns empty.
 - Spring `dispatcherServlet` quirk — during cascades, per-endpoint err% reads 0% because errors get attributed to the dispatcher span. Mitigated by service-level err% in Critical-API table.
