@@ -1,13 +1,14 @@
 # CLAUDE.md — einvoicing-claude-skills
 
 ## What this is
-ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`.
+ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`. The repo is one marketplace (`einvoicing-team`) with two plugins: `einvoicing-claude-skills` (source = repo root; the on-call handover) and `pr-review` (`plugins/pr-review/`; `v-pr-review`, needs only an authenticated `gh` CLI).
 
 ## Conventions
 - Skills are prefixed `v-` (matching the source repo convention).
 - Skill format: `skills/<name>/SKILL.md` with frontmatter (name, description). The SKILL.md is the **generic engine**; all region-specific facts live in `data/scopes.yaml`.
+- Each plugin has its own `version` in its `plugin.json` — bump the one whose files you change, or existing installs won't update. The root plugin loads only the skills listed in its `plugin.json` `skills`.
 - **To add or fix a region, edit `data/scopes.yaml` only** — never hardcode channels / PD prefixes / services / endpoints back into SKILL.md.
-- Drafts only — no skill auto-sends to Slack / Email / Coda / Git. Output location is per-scope (config): IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` (default) + per-scope `output:` overrides in `data/scopes.yaml`.
+- Drafts only — no skill auto-sends to Slack / Email / Coda / Git. One opt-in exception: `v-pr-review --auto-fix` edits the runner's own PR description. Output location is per-scope (config): IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` (default) + per-scope `output:` overrides in `data/scopes.yaml`.
 
 ## Don't
 - Don't run `git commit` or `git push` from the skill — user does these.

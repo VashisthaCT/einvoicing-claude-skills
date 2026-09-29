@@ -1,0 +1,11 @@
+{
+  "name": "pr-review",
+  "description": "ClearTax e-invoicing team PR reviewer — deep-dive review of GitHub PRs (correctness, impact on callers, test quality) plus a 10-check pre-flight on your own PRs. Flags known country gotchas. Never comments on, approves, or merges a PR.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Vashistha Garg",
+    "email": "vashistha.garg@clear.in"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["pr-review", "code-review", "github", "e-invoicing", "cleartax"]
+}
