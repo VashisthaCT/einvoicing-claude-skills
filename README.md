@@ -4,10 +4,10 @@ ClearTax e-invoicing team Claude Code skills, shared across the on-call rotation
 
 ## What's inside
 
-| Skill | Triggers | What it does |
-|---|---|---|
-| **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
-| **`/v-pr-review`** | Before approving a PR, or before asking for review on yours | Deep-dive review of one or more GitHub PRs — correctness, impact on callers, test quality — plus a 10-check pre-flight when the PR is yours. Detects the country from changed paths and flags known gotchas. Never comments on, approves, or merges. See [below](#v-pr-review). |
+| Plugin | Skill | Triggers | What it does |
+|---|---|---|---|
+| `einvoicing-claude-skills` | **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
+| `pr-review` | **`/v-pr-review`** | Before approving a PR, or before asking for review on yours | Deep-dive review of one or more GitHub PRs — correctness, impact on callers, test quality — plus a 10-check pre-flight when the PR is yours. Detects the country from changed paths and flags known gotchas. Never comments on, approves, or merges. See [below](#v-pr-review). |
 
 ## Architecture: generic engine + config
 
@@ -45,11 +45,12 @@ Then, inside Claude Code — add the marketplace first, then install from it:
 ```
 /plugin marketplace add VashisthaCT/einvoicing-claude-skills
 /plugin install einvoicing-claude-skills@einvoicing-team
+/plugin install pr-review@einvoicing-team
 ```
 
-After install, `/v-oncall-handover` and `/v-pr-review` are available, or describe the task ("draft this week's EU on-call handover", "review PR 1234").
+Install either or both: `einvoicing-claude-skills` gives you `/v-oncall-handover`, `pr-review` gives you `/v-pr-review`. You can also just describe the task ("draft this week's EU on-call handover", "review PR 1234"). If you added the marketplace before `pr-review` existed, run `/plugin marketplace update einvoicing-team` first.
 
-> `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugin inside it is `einvoicing-claude-skills`.
+> `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugins inside it are `einvoicing-claude-skills` and `pr-review`.
 
 **Alternative — run from a clone** (no plugin install, useful for editing `scopes.yaml` as you go):
 
@@ -107,6 +108,8 @@ Reviews one or more GitHub PRs. The mode comes from the author:
 - **Anyone else's** → deep-dive only: correctness, impact on callers, test quality, nits — each cited `file:line`.
 
 It reads files at the PR head, greps call-sites, and runs the PR's new test class in a throwaway worktree. It never switches your branch.
+
+**Install:** `/plugin install pr-review@einvoicing-team`. It's its own plugin ([`plugins/pr-review/`](plugins/pr-review/)), so you don't need the on-call handover skill or its MCP servers.
 
 **Needs:** `gh` CLI authenticated (`gh auth login`). No MCP servers. A local clone (the current directory, or `~/Desktop/<repo>`) is optional — it enables call-site greps and test runs; without one, files are read through the GitHub API.
 
