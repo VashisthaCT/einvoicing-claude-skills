@@ -7,6 +7,7 @@ ClearTax e-invoicing team Claude Code skills, shared across the on-call rotation
 | Skill | Triggers | What it does |
 |---|---|---|
 | **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
+| **`/v-pr-review`** | Before approving a PR, or before asking for review on yours | Deep-dive review of one or more GitHub PRs — correctness, impact on callers, test quality — plus a 10-check pre-flight when the PR is yours. Detects the country from changed paths and flags known gotchas. Never comments on, approves, or merges. See [below](#v-pr-review). |
 
 ## Architecture: generic engine + config
 
@@ -46,7 +47,7 @@ Then, inside Claude Code — add the marketplace first, then install from it:
 /plugin install einvoicing-claude-skills@einvoicing-team
 ```
 
-After install, `/v-oncall-handover` is available, or describe the task ("draft this week's EU on-call handover").
+After install, `/v-oncall-handover` and `/v-pr-review` are available, or describe the task ("draft this week's EU on-call handover", "review PR 1234").
 
 > `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugin inside it is `einvoicing-claude-skills`.
 
@@ -98,10 +99,25 @@ Then start Claude Code from that directory. Step 0 of the skill resolves `data/s
 
 The skill drafts; you verify. Always check each PD's Fix/Resolution accuracy, each CFD's engineering owner + status, and the metrics interpretations (especially regression-cluster hypotheses). To add action items, edit the source MD — append `- [ ] new item` rows inside the existing `<ul>` cells.
 
+## `/v-pr-review`
+
+Reviews one or more GitHub PRs. The mode comes from the author:
+
+- **Your PR** → 10-check pre-flight (description sections, Jira link, AI tag, design-doc link, test coverage, instrumentation, CI, branch staleness, TODOs, reviewers) + deep-dive.
+- **Anyone else's** → deep-dive only: correctness, impact on callers, test quality, nits — each cited `file:line`.
+
+It reads files at the PR head, greps call-sites, and runs the PR's new test class in a throwaway worktree. It never switches your branch.
+
+**Needs:** `gh` CLI authenticated (`gh auth login`). No MCP servers. A local clone (the current directory, or `~/Desktop/<repo>`) is optional — it enables call-site greps and test runs; without one, files are read through the GitHub API.
+
+**Args:** `<pr>` (URL or number) · `<pr1> <pr2> ...` (sequential, waits for `go` between PRs) · `--auto-fix` (your PR only: rewrites its description via `gh pr edit`) · `--out <dir>` (default `~/Documents/pr-reviews/`).
+
+Each review is saved to `<out>/<repo>-<pr>.md`. It never comments on, approves, or merges a PR. The only thing it ever writes to GitHub is your own PR's description, and only when you pass `--auto-fix`.
+
 ## Reporting issues / contributing
 
 Private team-internal repo. Open issues / PRs here, or DM Vashistha Garg (`U087T0SHNCC`).
 
 ## Related (Vashistha's personal skills)
 
-The full personal productivity skills (`/v-rca`, `/v-country-brain`, `/v-pr-review`, etc.) live at `VashisthaCT/personal-skills` (private). Ask Vashistha for access.
+The full personal productivity skills (`/v-rca`, `/v-country-brain`, etc.) live at `VashisthaCT/personal-skills` (private). Ask Vashistha for access.
