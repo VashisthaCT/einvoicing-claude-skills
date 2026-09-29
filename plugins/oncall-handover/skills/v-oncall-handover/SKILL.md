@@ -17,11 +17,11 @@ You are drafting a weekly E-Invoicing on-call handover doc. Run every Monday mor
 
 ## Step 0 — Load config (do this first, every run)
 
-Read the config file. **Resolve its path in this order** — a bare relative `data/scopes.yaml` resolves against the session's working directory, which is wrong whenever the user isn't sitting in the repo root:
+Read the config file. **Resolve its path in this order** — a bare relative `data/scopes.yaml` resolves against the session's working directory, which is wrong whenever the user isn't sitting in the plugin folder:
 
 1. `${CLAUDE_PLUGIN_ROOT}/data/scopes.yaml` — set when installed as a plugin. Use this if `CLAUDE_PLUGIN_ROOT` is set.
-2. `<repo-root>/data/scopes.yaml` — if running inside a clone of this repo (the dir containing `.claude-plugin/`).
-3. `~/dev/einvoicing-claude-skills/data/scopes.yaml` — last-resort fallback for a bare-copied skill.
+2. `<repo-root>/plugins/oncall-handover/data/scopes.yaml` — if running inside a clone of this repo (the dir containing `.claude-plugin/marketplace.json`).
+3. `~/dev/einvoicing-claude-skills/plugins/oncall-handover/data/scopes.yaml` — last-resort fallback for a bare-copied skill.
 
 If none resolve, stop and tell the user the config is missing — do NOT fall back to hardcoded channels or endpoints.
 

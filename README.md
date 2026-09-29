@@ -1,17 +1,17 @@
 # einvoicing-claude-skills
 
-ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations.
+ClearTax e-invoicing team Claude Code plugins. One marketplace (`einvoicing-team`), one folder per plugin under [`plugins/`](plugins/).
 
 ## What's inside
 
 | Plugin | Skill | Triggers | What it does |
 |---|---|---|---|
-| `einvoicing-claude-skills` | **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
+| `oncall-handover` | **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](plugins/oncall-handover/data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
 | `pr-review` | **`/v-pr-review`** | Before approving a PR, or before asking for review on yours | Deep-dive review of one or more GitHub PRs — correctness, impact on callers, test quality — plus a 10-check pre-flight when the PR is yours. Detects the country from changed paths and flags known gotchas. Never comments on, approves, or merges. See [below](#v-pr-review). |
 
 ## Architecture: generic engine + config
 
-The skill is **config-driven**. `skills/v-oncall-handover/SKILL.md` is the generic engine — the week-window math, thread-reading, false-alert/CFD heuristics, CubeAPM baseline methodology, and output format are all region-agnostic. Every region-specific fact lives in **[`data/scopes.yaml`](data/scopes.yaml)**:
+The skill is **config-driven**. `plugins/oncall-handover/skills/v-oncall-handover/SKILL.md` is the generic engine — the week-window math, thread-reading, false-alert/CFD heuristics, CubeAPM baseline methodology, and output format are all region-agnostic. Every region-specific fact lives in **[`plugins/oncall-handover/data/scopes.yaml`](plugins/oncall-handover/data/scopes.yaml)**:
 
 ```yaml
 scopes:
@@ -44,21 +44,22 @@ Then, inside Claude Code — add the marketplace first, then install from it:
 
 ```
 /plugin marketplace add VashisthaCT/einvoicing-claude-skills
-/plugin install einvoicing-claude-skills@einvoicing-team
+/plugin install oncall-handover@einvoicing-team
 /plugin install pr-review@einvoicing-team
 ```
 
-Install either or both: `einvoicing-claude-skills` gives you `/v-oncall-handover`, `pr-review` gives you `/v-pr-review`. You can also just describe the task ("draft this week's EU on-call handover", "review PR 1234"). If you added the marketplace before `pr-review` existed, run `/plugin marketplace update einvoicing-team` first.
+Install either or both: `oncall-handover` gives you `/v-oncall-handover`, `pr-review` gives you `/v-pr-review`. You can also just describe the task ("draft this week's EU on-call handover", "review PR 1234"). If you added the marketplace earlier, run `/plugin marketplace update einvoicing-team` first. The on-call plugin used to be called `einvoicing-claude-skills` — if you installed it under that name, `/plugin uninstall einvoicing-claude-skills@einvoicing-team` and install `oncall-handover` instead.
 
-> `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugins inside it are `einvoicing-claude-skills` and `pr-review`.
+> `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugins inside it are `oncall-handover` and `pr-review`.
 
 **Alternative — run from a clone** (no plugin install, useful for editing `scopes.yaml` as you go):
 
 ```bash
 git clone https://github.com/VashisthaCT/einvoicing-claude-skills.git ~/dev/einvoicing-claude-skills
+claude --plugin-dir ~/dev/einvoicing-claude-skills/plugins/oncall-handover
 ```
 
-Then start Claude Code from that directory. Step 0 of the skill resolves `data/scopes.yaml` from `${CLAUDE_PLUGIN_ROOT}` when installed as a plugin, else from the repo root, else from `~/dev/einvoicing-claude-skills/`.
+`--plugin-dir` loads the plugin straight from your clone for that session. Step 0 of the skill finds `data/scopes.yaml` under `${CLAUDE_PLUGIN_ROOT}` (the plugin folder), else under `plugins/oncall-handover/` in a clone, else under `~/dev/einvoicing-claude-skills/plugins/oncall-handover/`.
 
 ## Configure for your team (edit `data/scopes.yaml`)
 
