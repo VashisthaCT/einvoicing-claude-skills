@@ -25,7 +25,7 @@ Read the config file. **Resolve its path in this order** — a bare relative `da
 
 If none resolve, stop and tell the user the config is missing — do NOT fall back to hardcoded channels or endpoints.
 
-Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `jira_projects`, (optional) `oncall_handle` (used by Step 4b), `customers`, `notes`, (optional) `output` override, and (optional) `alert_format` + `alert_match` — `alert_format` defaults to `pd_bot` when absent; `coralogix` selects the alternate recognizer in Step 2.
+Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `jira_projects`, (optional) `jira_pass2_filter` (extra JQL for Step 4 pass 2), (optional) `oncall_handle` (used by Step 4b), `customers`, `notes`, (optional) `output` override, and (optional) `alert_format` + `alert_match` — `alert_format` defaults to `pd_bot` when absent; `coralogix` selects the alternate recognizer in Step 2.
 
 **If a requested scope's block is unpopulated** (empty `alert_channels`/`generate_endpoints`, or `notes: PENDING DISCOVERY`): stop and tell the user that scope isn't configured yet, and point them at `data/scopes.yaml` to fill it. Don't fabricate channels/endpoints.
 
@@ -175,9 +175,8 @@ For each `l3_workflow_bot` escalation post in the window:
    - **Issue** verbatim (one line).
    - **Engineering Owner** = first **engineer** (from the shared `engineers` roster) to ack or post a substantive technical reply. Distinguish from `Submitted By` (the L2 escalator). Never attribute to anyone in `l2_escalators`.
    - **Fix** — one column. The permanent fix, or "Closed not-a-bug". Only when a distinct mitigation was applied first does it become `<short-term> → <long-term>`; don't write `none → <fix>`.
-   - **Status — read it from JIRA, not from reactions.** The bot template carries a `JIRA Link`. Resolve that ticket with `mcp__de387922-450f-43fc-88e8-473a7b0c3961__getJiraIssue` and map on **`statusCategory`**, never the literal status name — every project spells its workflow differently (EOCJ, EIOCJ, GOCJ, TMALOCJ/IMALOCJ all differ) and the category is the one field Jira guarantees:
-     - `Done` + resolution in (Won't Do / Not a Bug / Duplicate / Cannot Reproduce / Declined) → **Closed not-a-bug**
-     - `Done` + any other resolution → **Resolved**
+   - **Status — read it from JIRA, not from reactions.** The bot template carries a `JIRA Link`. Resolve that ticket with `mcp__de387922-450f-43fc-88e8-473a7b0c3961__getJiraIssue`. **`statusCategory` decides open vs closed** — every project spells its workflow differently, and the category is the one field Jira guarantees. **The status NAME carries the close reason** — verified 2026-10-05: in EIOCJ/GOCJ the Done transition usually leaves `resolution` empty (66 of 118 EIOCJ Done tickets), and the real reason lives in names like `Gov Issues`, `Invalid / Too Old`, `Cannot Reproduce`, `Duplicate`. So:
+     - `Done` → **Closed — `<status name verbatim>`** (append the resolution only when it is non-empty). Write the name as-is; readers understand "Invalid / Too Old" or "Gov Issues" without a mapping table, and a table would drift as workflows change.
      - `In Progress` → **Open (in progress)**
      - `To Do` → **Open**
 
@@ -195,15 +194,19 @@ For each in-scope region, take its `jira_projects` from config and query for tic
 
 ```
 project IN (<keys>) AND statusCategory = Done
-  AND resolutiondate >= "<weekstart> 00:00" AND resolutiondate <= "<weekstart+6d> 23:59"
-ORDER BY resolutiondate DESC
+  AND statusCategoryChangedDate >= "<weekstart> 00:00" AND statusCategoryChangedDate <= "<weekstart+6d> 23:59"
+  [AND <scope's jira_pass2_filter, if set>]
+ORDER BY statusCategoryChangedDate DESC
 ```
+
+⚠️ **Never use `resolutiondate` here.** It is only set when a ticket gets a resolution, and EIOCJ's Done transition doesn't set one — on 2026-10-05 a `resolutiondate` query found 1 of the week's 5 closures. `statusCategoryChangedDate` records when the ticket entered Done, whatever the resolution. Jira evaluates these dates in the account's timezone (+05:30 here), so the bounds above are IST.
 
 Then:
 1. **Drop every ticket pass 1 already captured** — match on ticket key, so nothing is double-counted between the two tables.
-2. **Sanity-check that the project only holds escalations.** The `*OCJ` projects are on-call escalation projects, so by default every ticket in them qualifies. If the first run surfaces obvious internal dev tickets, add an issuetype or label filter to that scope's config rather than hardcoding one here.
-3. For each survivor pull: ticket key, customer, one-line issue, `Closed as` (the resolution value verbatim), engineering owner (the assignee, mapped through the shared `engineers` roster; fall back to the assignee's display name), and the originating Slack thread permalink where the ticket carries one.
+2. **Keep only escalations.** The `*OCJ` projects are mostly Salesforce-created escalations, but not only — they also hold internal dev tasks and months-old Salesforce feature "Story" tickets. A scope's `jira_pass2_filter` (e.g. `issuetype = Bug` for ind/ksa, verified 2026-10-05) keeps pass 2 to real escalations.
+3. For each survivor pull: ticket key, customer, one-line issue, `Closed as` (the status name verbatim, plus the resolution if non-empty), engineering owner (the assignee, mapped through the shared `engineers` roster; fall back to the assignee's display name), and the originating Slack thread permalink where the ticket carries one.
 4. Render in the `closed this week, raised earlier` sub-table. Omit the sub-section when it comes back empty.
+5. **Escalations with no Jira ticket are invisible to this query.** When reading the L3 channel turns up an older ticket-less escalation that closed this week (e.g. a fix confirmed in-thread), add it to the same table with `—` as the ticket. Otherwise say once under the table that ticket-less escalations aren't tracked here.
 
 **If the Atlassian MCP is unavailable:** skip pass 2, fall back to reactions in pass 1, and state once in the doc — `Late-closure pass skipped — Atlassian MCP unavailable; statuses below are Slack-inferred.` Never drop it silently, or the doc quietly understates the week again.
 

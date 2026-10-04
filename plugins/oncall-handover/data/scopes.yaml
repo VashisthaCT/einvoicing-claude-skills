@@ -76,8 +76,11 @@ engineers:                           # candidate engineering owners (the first t
   - { name: "Gajjala Kullayappa", slack: U02TGQ66E3B }
   - { name: "Om Anil" }
   - { name: "Vaibhav Pawar" }
-  - { name: "Shivkumar" }
   - { name: "Siddhant" }
+  - { name: "Tejas Thombare", slack: U0BMFRQR752 }      # added 2026-10-05 — owns EWB/report work in EIOCJ threads
+  - { name: "Vashistha Garg", slack: U087T0SHNCC }      # added 2026-10-05
+  # Removed bare "Shivkumar" 2026-10-05: the only Slack user by that name is not an engineer, so the entry
+  # mis-attributed CFDs. Submitting an escalation never makes someone its owner, even if they are on this roster.
 
 l2_escalators:                       # NOT engineering owners — these are the L2 people who escalate L3 threads; never attribute a CFD to them
   - "Kuwar Siddharth Singh"
@@ -100,6 +103,7 @@ scopes:
       - { name: "#einvoice-l3-support", id: C055ABMAVCL }
     l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
     jira_projects: [EIOCJ]             # Step 4: ticket status = source of truth; pass 2 finds tickets CLOSED this week whose thread predates the window
+    jira_pass2_filter: "issuetype = Bug"   # verified 2026-10-05: the project also holds dev tasks + old Salesforce "Story" feature requests; escalations are Bugs
     oncall_handle: { id: S0557TT6GQJ, name: "@einvoice-on-call" }   # v-oncall-tags searches the ID (verified 2026-10-05). Shared with ksa — searched once.
     cubeapm_services:
       - einvoicingbe-prod-http
@@ -133,6 +137,7 @@ scopes:
       - { name: "#einvoice-l3-support", id: C055ABMAVCL }
     l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
     jira_projects: [GOCJ]
+    jira_pass2_filter: "issuetype = Bug"
     oncall_handle: { id: S0557TT6GQJ, name: "@einvoice-on-call" }
     cubeapm_services:
       - einvoicingbe-prod-oci-http
