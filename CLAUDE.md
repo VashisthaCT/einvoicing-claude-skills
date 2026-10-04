@@ -30,8 +30,9 @@ The skill requires these MCP servers connected in your Claude Code config:
 - **Slack MCP** — for reading `#sev1-engg`, `#einv-gcc-alerts`, `#e-invoicing-pds`, `#einvoice-l3-support`. Tools used: `slack_read_channel`, `slack_read_thread`, `slack_search_public`.
 - **CubeAPM MCP** (`clarity-cubeapm`) — for metrics queries. Tools used: `query_metrics_instant`, `query_metrics_range`, `list_available_regions`.
 - **PagerDuty MCP** (`clarity-pagerduty`) — optional, used in Step 3 alert-payload verification. Tools: `get_incident_alerts`.
+- **Atlassian MCP** — Step 4 CFD status. Ticket status is the source of truth for open/closed; Slack reactions are only the fallback. Tools: `getJiraIssue` (status of a linked ticket), `searchJiraIssuesUsingJql` (pass 2 — tickets closed during the window whose thread predates it). Needs OAuth authorization before first use.
 
-If any MCP is missing, the skill will degrade gracefully (e.g. skip alert-payload verification if PagerDuty is missing). It will fail to produce useful output if Slack or CubeAPM is missing.
+If any MCP is missing, the skill will degrade gracefully (e.g. skip alert-payload verification if PagerDuty is missing; fall back to Slack reactions and skip the late-closure pass if Atlassian is missing — stating so in the doc rather than silently understating the week). It will fail to produce useful output if Slack or CubeAPM is missing.
 
 ## Tooling quirks (codified during the May 2026 build)
 

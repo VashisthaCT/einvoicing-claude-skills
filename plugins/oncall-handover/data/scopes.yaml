@@ -99,6 +99,7 @@ scopes:
     l3_channels:
       - { name: "#einvoice-l3-support", id: C055ABMAVCL }
     l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
+    jira_projects: [EIOCJ]             # Step 4: ticket status = source of truth; pass 2 finds tickets CLOSED this week whose thread predates the window
     cubeapm_services:
       - einvoicingbe-prod-http
       - einvoicing-integrations-prod-http
@@ -121,12 +122,16 @@ scopes:
   ksa:
     label: KSA / GCC
     pd_service_prefixes:
-      - "[E-Invoicing-GCC]"
+      - "[E-Invoicing-GCC]"   # PHKW6GK "Proactive Alerts Sev1", PKWN491 "Degraded Performance Sev2"
+      - "[EInv-GCC]"          # ⚠️ ADDED 2026-09-21 — PB7Z3K8 "[EInv-GCC] Zatca Alerts Downtime Sev1". The old list held
+                              # only "[E-Invoicing-GCC]", and a starts-with test does NOT match "[EInv-GCC]", so every
+                              # ZATCA-downtime Sev1 was silently dropped from the KSA handover. Both spellings are live.
     alert_channels:
       - { name: "#einv-gcc-alerts", id: C03L955GFD5 }
     l3_channels:
       - { name: "#einvoice-l3-support", id: C055ABMAVCL }
     l3_workflow_bot: { name: "Escalate Customer Issues to L3 New 2", id: B094B94DUSZ }   # shared IND+GCC escalation workflow; attribute region via the post's "Product: Einvoice India/GCC" field + JIRA project (EIOCJ=IND, GOCJ=GCC)
+    jira_projects: [GOCJ]
     cubeapm_services:
       - einvoicingbe-prod-oci-http
       - einvoicingbe-prod-oci-bulk-http
@@ -157,19 +162,23 @@ scopes:
     # Auto-discovered 2026-06-15 — HIGH confidence (verified against ~90d PD incidents + live 7d CubeAPM traffic).
     output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/eu" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/eu/oncall-handover-<weekstart>.md
     pd_service_prefixes:
-      - "[E-Invoicing-EU]"        # single PD service POAA504 "Alerts Sev2" carries BOTH urgencies (no separate Sev1 service)
+      - "[E-Invoicing-EU]"        # matches BOTH live services — POAA504 "Alerts Sev2" (92 incidents/90d, verified exact)
+                                  # and P2RB881 "Alerts Sev1". CORRECTED 2026-09-21: the old comment claimed one service
+                                  # carried both urgencies and no Sev1 existed — wrong. The prefix catches both either
+                                  # way, so behaviour was never affected, but don't rely on the "no Sev1" claim.
     alert_channels:
       - { name: "#einvoicing-global-pds-sev2", id: C0A6G866FH7 }   # misleadingly "global"-named but in practice carries ONLY [E-Invoicing-EU] PD-bot posts today; the pd_service_prefixes filter is what scopes it
     l3_channels:
       - { name: "#einvoice-eu-l3-support", id: C0A6XNJG1A4 }       # dedicated EU L3 (Jira project EOCJ); does NOT use the IND/GCC #einvoice-l3-support
     l3_workflow_bot: { name: "EInvoicing Europe Customer Issues to L3", id: B0A91P9QDEV }   # EU escalation workflow (Jira EOCJ); discovered 2026-06-15, verify on first run
+    jira_projects: [EOCJ]
     cubeapm_services:
       - einvoicing-core-prod-eu-http
       - clear-peppol-ap-outbound-prod-eu-http
       - clear-peppol-ap-inbound-prod-eu-http
     generate_endpoints:
-      - { service: einvoicing-core-prod-eu-http, span_name: "v1/einvoice/generate (POST)" }            # ~15k/7d — canonical EU document generate (einvoicing-core SaaS, serves BE/FR/PL/DE)
-      - { service: clear-peppol-ap-outbound-prod-eu-http, span_name: "clear-ap/v1/transactions (POST)" } # ~825/7d — AS4 outbound transmit to Peppol network (EU "submit/clearance" leg)
+      - { service: einvoicing-core-prod-eu-http, span_name: "v1/einvoice/generate (POST)" }            # 6,172/7d verified 2026-09-21 (was ~15k in June — roughly halved; endpoint healthy, volume genuinely down)
+      - { service: clear-peppol-ap-outbound-prod-eu-http, span_name: "clear-ap/v1/transactions (POST)" } # 466/7d verified 2026-09-21 (was ~825) — AS4 outbound transmit to Peppol network
     topk_service_regex: "einvoicing-core-prod-eu-http|clear-peppol-ap-outbound-prod-eu-http|clear-peppol-ap-inbound-prod-eu-http"
     noisy_rule_ids:
       - "1158"   # Einvoicin-Integrations EU Anomaly (call-rate dip)
@@ -191,11 +200,16 @@ scopes:
     output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/my" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/my/oncall-handover-<weekstart>.md
     pd_service_prefixes:
       - "[E-Invoicing-Malaysia]"   # FULL WORD "Malaysia" (not "MY"). Single PD service PGFR06I "Alerts Sev2", both urgencies.
+    # MY alerts are Coralogix-native Slack posts with NO PD Service field — parsing them as `pd_bot`
+    # matches nothing and the region silently reads "None this week". See SKILL.md Step 2.
+    alert_format: coralogix
+    alert_match: ["[E-Invoicing-Malaysia]", "einvoicing-malaysia", "ct-my-prod", "Einvoicing Core My", "Routing MY"]   # ANY token matches; widen on first run if the match count comes back 0 against a non-empty channel
     alert_channels:
       - { name: "#einvoicing-malaysia-prod-alerts", id: C07G8593DFV }   # see notes: MY pages arrive as Coralogix P1/P2 alerts fanned out to PD, NOT a classic PD-incident-bot format
     l3_channels:
       - { name: "#einvoicing-malaysia-l3-support", id: C076M3ANJN4 }    # dedicated MY L3 (Jira TMALOCJ/IMALOCJ, on-call subteam S07H136RP0E); does NOT use #einvoice-l3-support
     l3_workflow_bot: { name: "EInvoicing Malaysia Customer Issues to L3", id: B07HAA03K0U }   # MY escalation workflow (Jira TMALOCJ/IMALOCJ); discovered 2026-06-15, verify on first run
+    jira_projects: [TMALOCJ, IMALOCJ]
     cubeapm_services:
       - einvoicing-core-prod-my-http
       - einvoicing-integrations-prod-my-http
@@ -224,39 +238,77 @@ scopes:
     # UAE PINT-AE + Oman Fawtara (go-live ~Aug 2026, discovery stage) + Jordan JoFotara. No dedicated PD service exists YET.
     output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/mea" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md
     pd_service_prefixes:
-      - "[E-Invoicing-MEA]"   # INFERRED-NOT-VERIFIED — no MEA-specific PD service has fired yet; convention-predicted future prefix. Starts matching automatically once the dedicated service is carved out.
+      # ✅ VERIFIED 2026-09-21 by exhaustive paging (2033 incidents, full 90d window, more:false — no sampling gap).
+      # MEA DOES have a dedicated PD service. The old guess "[E-Invoicing-MEA]" never matched anything because the
+      # real service is spelled WITHOUT the hyphen and without a bracketed country code. Do not "correct" it back.
+      - "[Einvoicing MEA]"      # PIR440C "[Einvoicing MEA] Sev 2" — 65 incidents in 90d. THE MEA alert source.
+      - "E-Invoice Indai MEA"   # PXMR27U "E-Invoice Indai MEA Sev1" — note the upstream typo "Indai"; near-dormant (1 incident/90d) but real. Match verbatim.
     alert_channels:
       - { name: "#einvoicing-mea-pds", id: C0B66JQHD4H }    # dedicated MEA alert channel (created 2026-05-26 by Ayush, core team joined). Empty as of 2026-06-15 → MEA PD section reads "None this week" until a MEA PD service fires here. Add more channels to this list as they are created.
-    # OPTIONAL fallback (left OFF per user preference 2026-06-15). Before the dedicated MEA service/channel is live,
+    # OPTIONAL fallback (left OFF per user preference 2026-06-15). Before a dedicated MEA service/channel is live,
     # MEA workloads page under the generic shared "DevOps Alerts Sev 2" (PV4Q1O5) in #devops-alerts-sev2 (C08SAGJQXCG).
-    # To capture those in the meantime: add `- { name: "#devops-alerts-sev2", id: C08SAGJQXCG }` to alert_channels
-    # above AND uncomment the next line — Step 2 then keeps DevOps-Alerts posts whose body matches this MEA-workload regex:
+    # To capture those: add `- { name: "#devops-alerts-sev2", id: C08SAGJQXCG }` to alert_channels above AND
+    # uncomment the next line — Step 2 then keeps DevOps-Alerts posts whose body matches this MEA-workload regex:
     # pd_workload_filter: "(einvoicing-core|einvoicing-integrations|einvoicing-routing|clear-peppol-ap-(inbound|outbound))-prod-oci-mea-"
+    #
+    # ⛔ OBSOLETE — DO NOT ENABLE THE FALLBACK ABOVE. Settled 2026-09-21 by exhaustive paging of PV4Q1O5
+    # (2033 incidents, 21 pages, more:false, 100% of the 90d window):
+    #   • ZERO matches for that regex, and zero e-invoicing MEA workloads of any spelling. The only `oci-mea` things
+    #     paging via PV4Q1O5 are OTHER teams' services — kramer-v2, licensing-service, salessyncservice — plus infra.
+    #     The `-prod-om-` hits there are Oman infra (kramer, userservice, enterprise-orchestrator), not e-invoicing.
+    #   • MEA e-invoicing pages through its OWN service PIR440C instead, which pd_service_prefixes now matches.
+    # So the DevOps-Alerts carve-out is unnecessary for MEA. Leave it off and leave the regex unfixed; if you ever
+    # revive it, note the real workload names don't fit the old pattern anyway (Grafana rules like
+    # `einvoicing-core-http-mea-low-apdex` have no `-prod-oci-` segment, and the Peppol pods carry a `-demo` infix:
+    # `clear-peppol-ap-outbound-demo-prod-oci-mea-consumer`).
     l3_channels:
       - { name: "#einvoice-mea-l3-support", id: C0AB8EAH9A6 }   # HIGH confidence, live (Tabby UAE prod issues); Jira project MEA (board 1588). Does NOT use #einvoice-l3-support.
     l3_workflow_bot: {}   # no dedicated MEA escalation workflow found as of 2026-06-15 → Step 4 falls back to reply_count>=5. Re-check after MEA GA; add the bot here once it exists.
+    jira_projects: [MEA]  # board 1588; pass 2 still works here even without a workflow bot, since it queries JIRA directly rather than Slack
     cubeapm_services:
       - einvoicing-core-prod-oci-mea-http
       - einvoicing-integrations-prod-oci-mea-http
       - einvoicing-routing-prod-oci-mea-http
+      # clear-peppol-ap IS on MEA OCI after all (verified 2026-09-21: inbound 490k/7d, outbound 967k/7d).
+      # Their spans are OperationHandler/handle polling, not REST generate, so they carry no generate_endpoint.
+      - clear-peppol-ap-inbound-prod-oci-mea-http
+      - clear-peppol-ap-outbound-prod-oci-mea-http
+      # --- Oman went live on its OWN `-prod-om-` stack, NOT under `-prod-oci-mea-` (verified 2026-09-21).
+      # Until this was added, ~1.3M calls/7d of live Oman production traffic were invisible to the MEA handover.
+      - einvoicing-core-prod-om-http
+      - einvoicing-integrations-prod-om-http
+      - einvoicing-routing-prod-om-http
+      - clear-peppol-ap-inbound-prod-om-http
+      - clear-peppol-ap-outbound-prod-om-http
     generate_endpoints:
-      - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/einvoice/generate (POST)" }        # ~298/7d — PRIMARY MEA generate
+      - { service: einvoicing-core-prod-om-http, span_name: "v1/einvoice/generate (POST)" }             # ~278/7d — Oman generate (verified 2026-09-21)
+      - { service: einvoicing-integrations-prod-om-http, span_name: "einvoice/v1/documents/send (POST)" } # ~11/7d — Oman Peppol dispatch; low but live
+      - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/einvoice/generate (POST)" }        # ~3,487/7d (verified 2026-09-21; was ~298 in June — 11x growth)
       - { service: einvoicing-integrations-prod-oci-mea-http, span_name: "einvoice/v1/documents/send (POST)" } # ~306/7d — Peppol document dispatch/send (4/5-corner submit to AP)
       - { service: einvoicing-core-prod-oci-mea-http, span_name: "bulk/{mode}/** (POST)" }               # ~137/7d — bulk submit
       - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/participant/generate (POST)" }      # ~2/7d — Peppol participant registry (PINT-AE/OM), low but live
       - { service: einvoicing-core-prod-oci-mea-http, span_name: "v1/taxpayer/submit (POST)" }           # ~1/7d — taxpayer onboarding submit, low but live
-    topk_service_regex: "einvoicing-core-prod-oci-mea-http|einvoicing-integrations-prod-oci-mea-http|einvoicing-routing-prod-oci-mea-http"
+    topk_service_regex: "einvoicing-(core|integrations|routing)-prod-(oci-mea|om)-http|clear-peppol-ap-(inbound|outbound)-prod-(oci-mea|om)-http"
     noisy_rule_ids: []   # "Einvoicin MEA Anomaly" alerts exist (seen for Tabby UAE prod) but rule_ids weren't captured — fill after first live run
     customers: [Tabby]   # UAE; non-exhaustive. Add tokens as you see them.
     notes: >
       VERIFIED HIGH: CubeAPM services + generate endpoints (live 7d traffic; *-prod-oci-mea-* OCI host pattern
-      confirmed). Alert/PD routing is early-stage. Key facts: (1) NO [E-Invoicing-MEA] PagerDuty service exists
-      today — the prefix above is the convention-predicted future one and will start matching automatically once
-      created. Until then the MEA PD section will read "None this week". (Optional: capture MEA's current pages
-      from the shared "DevOps Alerts Sev 2" via the commented pd_workload_filter recipe above — left OFF by
-      default per user preference; add channels here as they're created.) (2) #einvoicing-mea-pds (C0B66JQHD4H,
+      confirmed). (1) CORRECTED 2026-09-21 — MEA DOES have its own PagerDuty service. The June note that
+      no MEA service existed was wrong; the predicted prefix "[E-Invoicing-MEA]" simply never matched the real
+      name. Live services: PIR440C "[Einvoicing MEA] Sev 2" (65 incidents/90d — the real alert source; typical
+      titles `[FIRING:1] einvoicing-routing-http-mea-low-apdex`, `einvoicing-core-http-mea-low-apdex`, and
+      CrashLoopBackOff pages for clear-peppol-ap-outbound-demo-prod-oci-mea-consumer / ingv2-einvoice-prod-oci-mea-
+      subactivity-processor) and PXMR27U "E-Invoice Indai MEA Sev1" (near-dormant, 1 incident/90d). MEA's PD
+      section should now populate — if it still reads "None this week", the prefixes are the first thing to check. (2) #einvoicing-mea-pds (C0B66JQHD4H,
       created 2026-05-26 by Ayush) is the dedicated channel but had zero PD-bot posts as of 2026-06-15 — re-verify
       once an alert fires into it. (3) #einvoicing-global-pds-sev2 is the EU channel, NOT MEA — do not conflate.
-      (4) NO clear-peppol-ap on MEA OCI — the MEA generate flow runs through einvoicing-core + einvoicing-integrations;
-      the Peppol AP layer lives in the EU region. Re-run discovery for MEA after Oman/UAE GA (~Aug 2026) — endpoint
-      set and PD routing will likely change.
+      (4) CORRECTED 2026-09-21 — the old note here claimed "NO clear-peppol-ap on MEA OCI". That is WRONG:
+      clear-peppol-ap-inbound/outbound-prod-oci-mea-http both exist and carry traffic (490k / 967k per 7d). They
+      serve OperationHandler/handle polling rather than a REST generate span, which is why no generate_endpoint
+      is listed for them.
+      (5) OMAN IS LIVE ON ITS OWN STACK (discovered 2026-09-21). Oman runs on `-prod-om-` hosts, NOT under
+      `-prod-oci-mea-` as the June config assumed — einvoicing-core-prod-om-http alone carries ~1.3M calls/7d.
+      Every one of those calls was invisible to this scope until the `-prod-om-` services were added above. The
+      "re-run discovery after Oman/UAE GA (~Aug 2026)" note was correct and overdue; this is what it would have caught.
+      MEA's own traffic also grew ~11x since June (generate 298 → 3,487 per 7d), so treat any remaining June-era
+      volume annotation in this block as stale.

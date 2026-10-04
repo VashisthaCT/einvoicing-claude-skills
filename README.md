@@ -26,7 +26,7 @@ scopes:
 
 ## Prerequisites
 
-1. **Claude Code** with MCP servers for: Slack, CubeAPM (`mcp__clarity-cubeapm__*`), PagerDuty (`mcp__clarity-pagerduty__*`).
+1. **Claude Code** with MCP servers for: Slack, CubeAPM (`mcp__clarity-cubeapm__*`), PagerDuty (`mcp__clarity-pagerduty__*`), and **Atlassian/Jira** (CFD status + the late-closure pass; needs OAuth authorization before first use).
 2. **Read access** to the Slack channels listed in `data/scopes.yaml` for the scope(s) you run (alert channels + L3 channels + shared `#sev1-engg` `C08F1GJ9Z24`).
 3. **CubeAPM query access** routed through the IND default cube (`meta.cubeapm_region: in` — single endpoint covers all regions' APM metrics).
 4. **A local clone of the output repo(s).** Output is per-scope: IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` + per-scope `output:` in `data/scopes.yaml`. The skill creates the parent dirs if missing. (You only need the clone for the scope(s) you actually run.)
@@ -83,7 +83,7 @@ claude --plugin-dir ~/dev/einvoicing-claude-skills/plugins/oncall-handover
 1. Computes the Mon→Sun IST week window.
 2. Harvests PagerDuty bot posts from the in-scope alert channels + shared `#sev1-engg`. Keeps only PD services matching the in-scope `pd_service_prefixes`.
 3. For each PD post: reads the full Slack thread → Fix/Resolution + Action Items, verifies against false-alert patterns + alert payload (+ each region's `noisy_rule_ids`).
-4. Harvests customer-facing L3 threads (≥5 replies) from the in-scope `l3_channels`. Attributes to the engineer who drove the fix (not the L2 escalator), per the shared rosters.
+4. Harvests customer-facing defects in two passes. **Pass 1** — escalations posted by the scope's L3 workflow bot during the window; status comes from the linked Jira ticket's `statusCategory`, with Slack reactions as fallback (marked `~`). **Pass 2** — tickets in the scope's `jira_projects` that reached a done status during the window but whose thread predates it, so work that closed out a long-pending defect still shows up. Both attribute to the engineer who drove the fix, not the L2 escalator.
 5. Computes Critical-API Health on each region's `generate_endpoints` + per-region Top-3 slowest/error-prone via CubeAPM. Baseline = mean of last 4 weekly p99-max-1h values.
 6. Composes Key takeaways — regression clusters, zombie endpoints, 1h-vs-15min noise notes.
 7. Saves to disk. **Save-only — never auto-commits or pushes.**
