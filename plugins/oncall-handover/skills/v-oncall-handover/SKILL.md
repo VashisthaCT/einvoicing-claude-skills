@@ -25,7 +25,7 @@ Read the config file. **Resolve its path in this order** — a bare relative `da
 
 If none resolve, stop and tell the user the config is missing — do NOT fall back to hardcoded channels or endpoints.
 
-Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `jira_projects`, `customers`, `notes`, (optional) `output` override, and (optional) `alert_format` + `alert_match` — `alert_format` defaults to `pd_bot` when absent; `coralogix` selects the alternate recognizer in Step 2.
+Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `jira_projects`, (optional) `oncall_handle` (used by Step 4b), `customers`, `notes`, (optional) `output` override, and (optional) `alert_format` + `alert_match` — `alert_format` defaults to `pd_bot` when absent; `coralogix` selects the alternate recognizer in Step 2.
 
 **If a requested scope's block is unpopulated** (empty `alert_channels`/`generate_endpoints`, or `notes: PENDING DISCOVERY`): stop and tell the user that scope isn't configured yet, and point them at `data/scopes.yaml` to fill it. Don't fabricate channels/endpoints.
 
@@ -59,6 +59,9 @@ Short-term Fix and Long-term Fix collapse into ONE `Fix` column — in practice 
 ### <R label> — closed this week, raised earlier (N)
 [Ticket | Customer | Issue | Closed as | Engineering Owner | Slack Thread]
 Escalations whose thread predates this window but whose JIRA ticket reached a done status during it (Step 4, pass 2). Omit the sub-section when N = 0.
+
+## Tagged outside support — N tags in M channels
+[Channel | Who | Ask | Type | Answered by | Status | Link] — produced by the sibling skill **v-oncall-tags** (Step 4b). Open and unanswered first; FYI/cc-only tags and daily reminder bots collapse to one line. Omit when N = 0.
 
 ## Critical-API Health: generate paths
 [table: API | Region | p99 max-1h wk (s) | p99 4w mean (s) | Err% wk | Err% 4w mean | Outlier?]
@@ -209,6 +212,10 @@ Then:
 Group pass 1 into one sub-table per in-scope region (header `### <label> — N raised this week`, where N = the workflow-escalation count). Each row: `# | Customer | Issue | Fix | Engineering Owner | Status | Slack Thread`. Then add:
 - **Open CFDs handed over** — the open/awaiting workflow CFDs (customer + ticket).
 - **Other customer threads** — a short note listing genuine customer-specific threads discussed in-channel but NOT escalated via the workflow (so the next on-call still sees them), explicitly flagged as not counted as CFDs.
+
+## Step 4b — Tagged outside support
+
+Follow the sibling skill **v-oncall-tags** (`skills/v-oncall-tags/SKILL.md` in this plugin) for the same week and scopes, and paste its section into the doc. Why it exists: on-call is regularly tagged in infra, product, security and release channels; none of those asks reach Steps 2–4, so an unanswered one silently disappears at handover. If no in-scope block has an `oncall_handle`, skip it and say so in one line.
 
 ## Step 5 — CubeAPM Critical-API Health (1-hour buckets)
 
@@ -392,6 +399,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - Top-3 tables render only for regions with something new or worsening; chronic-flat endpoints collapse to one line. The `≥5,000 calls/week` filter still applies.
 - Key takeaways cites specific endpoints, `Nx worse` regressions, and a regression-cluster hypothesis if multiple endpoints moved together.
 - Only the requested `--scope` regions appear; no other-region PDs/CFDs leak in.
+- "Tagged outside support" is present for every scope with an `oncall_handle` (or omitted because N = 0, said in one line), with open and unanswered tags listed first.
 - Output path printed to user; nothing auto-sent or committed.
 
 ## Coda push (REMOVED 2026-05-25)

@@ -7,6 +7,7 @@ ClearTax e-invoicing team Claude Code plugins. One marketplace (`einvoicing-team
 | Plugin | Skill | Triggers | What it does |
 |---|---|---|---|
 | `oncall-handover` | **`/v-oncall-handover`** | Run Monday morning before handover meeting | Drafts the weekly on-call handover doc for E-Invoicing, **for any region**. Config-driven via [`data/scopes.yaml`](plugins/oncall-handover/data/scopes.yaml) — supported scopes `ind`, `ksa`, `eu`, `my`, `mea` (default `ind,ksa`). For each in-scope region it pulls verified PagerDuty bot incidents from that region's alert channels (+ shared `#sev1-engg`), reads each PD's full Slack thread to extract Fix/Resolution + Action Items, harvests customer-facing L3 threads, and computes Critical-API Health (the region's generate endpoints) + per-region Top-3 slowest/error-prone APIs via CubeAPM (1-hour buckets, mean-of-4-weeks baseline). Saves locally — no auto-commit, no auto-send. |
+| `oncall-handover` | **`/v-oncall-tags`** | Anytime; `/v-oncall-handover` also runs it | Finds every time the on-call Slack handle was tagged **outside** the support channel that week — infra warnings, product questions, security asks, release pings — reads each thread, and lists them with the ask, who answered, and status, unanswered first. Searches the handle's **ID** (`oncall_handle` in `scopes.yaml`), which also catches bot-posted tags that a name search misses. Read-only. |
 | `pr-review` | **`/v-pr-review`** | Before approving a PR, or before asking for review on yours | Deep-dive review of one or more GitHub PRs — correctness, impact on callers, test quality — plus a 10-check pre-flight when the PR is yours. Detects the country from changed paths and flags known gotchas. Never comments on, approves, or merges. See [below](#v-pr-review). |
 
 ## Architecture: generic engine + config
@@ -48,7 +49,7 @@ Then, inside Claude Code — add the marketplace first, then install from it:
 /plugin install pr-review@einvoicing-team
 ```
 
-Install either or both: `oncall-handover` gives you `/v-oncall-handover`, `pr-review` gives you `/v-pr-review`. You can also just describe the task ("draft this week's EU on-call handover", "review PR 1234"). If you added the marketplace earlier, run `/plugin marketplace update einvoicing-team` first. The on-call plugin used to be called `einvoicing-claude-skills` — if you installed it under that name, `/plugin uninstall einvoicing-claude-skills@einvoicing-team` and install `oncall-handover` instead.
+Install either or both: `oncall-handover` gives you `/v-oncall-handover` and `/v-oncall-tags`, `pr-review` gives you `/v-pr-review`. You can also just describe the task ("draft this week's EU on-call handover", "review PR 1234"). If you added the marketplace earlier, run `/plugin marketplace update einvoicing-team` first. The on-call plugin used to be called `einvoicing-claude-skills` — if you installed it under that name, `/plugin uninstall einvoicing-claude-skills@einvoicing-team` and install `oncall-handover` instead.
 
 > `/plugin install <owner>/<repo>` is **not** valid syntax — a repo has to be registered as a marketplace first. The marketplace is named `einvoicing-team` (see `.claude-plugin/marketplace.json`); the plugins inside it are `oncall-handover` and `pr-review`.
 
