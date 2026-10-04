@@ -24,24 +24,25 @@ Resolve `data/scopes.yaml` exactly as v-oncall-handover Step 0 does (`${CLAUDE_P
 ## Step 1 — Search
 
 Tool: `slack_search_public_and_private`.
-- `keywords`: `["<oncall_handle.id>"]` — **search the ID, not the name.** Verified 2026-10-05: the ID matches both mention forms, `<@ID>` (people) and `<!subteam^ID>` (bots and workflows). Searching the handle's name misses the second form entirely.
+- `keywords`: `["<oncall_handle.id>"]` — **search the ID, not the name.** Verified 2026-10-05 on a real week: the ID found 38 hits, the name 28, and nothing was name-only. The name search misses every mention Slack never resolved to a name — bot posts, Slackbot notices, forwarded messages.
 - `filters`: `after:<weekstart − 1 day> before:<weekstart + 7 days>` (both bounds are exclusive).
 - `include_bots: true`, `sort: timestamp`, `include_context: false`.
 - **Follow the cursor until it runs out.** A page holds at most 20 results; one busy week already filled more than one page.
-- Keep only results whose text really contains the ID. Drop prose that just mentions the handle's name.
+- Keep only results whose own text contains the ID. Match on the **bare ID** — search output shows `<@S…>` while `slack_read_thread` shows `<!subteam^S…>` for the same tag.
+- Thread replies are found too, even in threads started weeks earlier — most tags are replies.
 
 ## Step 2 — Filter
 
 1. **Drop tags inside the scope's `l3_channels`** — count them, but they are the expected path.
-2. **Collapse recurring reminders.** The same author posting near-identical text on 2+ days (e.g. a daily "Open L3 Issues count" bot) becomes one line: `<channel> — daily reminder, N posts`. Not N rows.
+2. **Collapse recurring reminders.** The same author posting near-identical text on 2+ days (e.g. a daily "Open L3 Issues count" bot) becomes one line: `<channel> — daily reminder, N posts`. Not N rows. Match on author + text, not the bot flag: some daily digests post as a normal user.
 3. What remains is the outside-tag list.
 
 ## Step 3 — Read each outside tag
 
-Read its thread with `slack_read_thread` — from the parent if the tag is a reply. Record:
+Read its thread with `slack_read_thread` — **always from the parent.** About half of all tags are just "^" or "check this"; the ask lives in the parent. On threads with more than 100 replies the tool returns the newest 100, so pass `oldest=<tag ts>` to read from the tag onward. Record:
 - **Ask** — one plain-English line. What did they actually want?
 - **Type** — one of: Prod alert / infra · Customer / support ask · Feature / API request · Question · Release / deploy · Security / compliance · FYI / cc-only · Other.
-- **Answered by** — the first reply from someone on the `engineers` roster, and roughly how long after the tag. "Nobody" is a valid answer and the most important one.
+- **Answered by** — the first reply from someone on the `engineers` roster, and roughly how long after the tag. "Nobody" is a valid answer and the most important one. **An `:ack:` reaction is not an answer**, and neither is only rerouting to another group — record those as "Nobody (acked)" / "rerouted to <group>".
 - **Status** — resolved / open / unclear, from the thread's own evidence (a fix shipped, a "done", a ✅). Say "unclear" rather than guess.
 - **Link** — permalink from the raw `ts` returned by the API, never computed from a displayed time. For a reply: `https://cleartaxtech.slack.com/archives/<channel>/p<ts without dot>?thread_ts=<parent ts>&cid=<channel>`.
 
@@ -64,3 +65,4 @@ Standalone run: print the section in chat. Inside v-oncall-handover: it becomes 
 
 - Search only sees what the person running it can see: public channels, plus private channels and DMs they belong to. Tags in private channels they aren't in are invisible. Add one footer line saying so.
 - Search indexes a message's current text — a tag edited out later won't be found.
+- The user group's membership rotates at handover (Monday afternoon IST on 2026-10-05), so tags early on Monday may have reached the previous on-call.
