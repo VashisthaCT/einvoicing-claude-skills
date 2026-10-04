@@ -43,8 +43,8 @@ One section per in-scope region (in `--scope` order). Template per region `<R>` 
 PD Service is NOT a column — name the region's PD service(s) once in a line beneath the heading. Within one region it barely varies (EU is a single service carrying both urgencies), so a column of it is dead weight on every row.
 Incident column: 1-2 sentences, layman terms (no rule_ids, no JedisPool, no `cube.kind=static`). Mention day-of-week if useful.
 Fix / Resolution column: auto-populated from thread reading (Step 3). **1-2 sentences.** Root cause, who acted, how it closed (auto-resolve vs human-resolve vs fix-deployed). Don't narrate the investigation — the thread link carries the detail for anyone who needs it.
-Action Items column: markdown task list (`- [ ] item`) inside an HTML `<ul><li>`. Auto-populated where the thread surfaced concrete follow-ups; otherwise `<ul><li>[ ] _(none — add as discovered)_</li></ul>`. On-call edits the source MD directly to add items.
-(If a region had no real PDs: "None this week" + any routing-gap note from its config `notes`.)
+Action Items column: plain text, `[ ] item` per follow-up, several joined with ` · `. Auto-populated where the thread surfaced concrete follow-ups; otherwise `—`. On-call edits the source MD directly to add items.
+(If a region had no real PDs: just "None this week.")
 
 ## Noise / False Alerts
 ONE line per in-scope region — not a table:
@@ -61,7 +61,7 @@ Short-term Fix and Long-term Fix collapse into ONE `Fix` column — in practice 
 Escalations whose thread predates this window but whose JIRA ticket reached a done status during it (Step 4, pass 2). Omit the sub-section when N = 0.
 
 ## Tagged outside support — N tags in M channels
-[Channel | Who | Ask | Type | Answered by | Status | Link] — produced by the sibling skill **v-oncall-tags** (Step 4b). Open and unanswered first; FYI/cc-only tags and daily reminder bots collapse to one line. Omit when N = 0.
+[Channel | Asked by | Ask | Type | Outcome | Link] — produced by the sibling skill **v-oncall-tags** (Step 4b): only threads where the on-call replied. Open first. Omit when N = 0.
 
 ## Critical-API Health: generate paths
 [table: API | Region | p99 max-1h wk (s) | p99 4w mean (s) | Err% wk | Err% 4w mean | Outlier?]
@@ -79,7 +79,7 @@ Render a region's pair of tables **only when that region has at least one entry 
 - [bullets — regression clusters, zombie endpoints, 1h-vs-15min noise notes, filter tweaks]
 ```
 
-Reference canonical example output (IND+KSA, week May 18-24 2026) *was* `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md` — but `/tmp` is ephemeral and the file is usually gone. The structure above plus the `<style>` block in Step 7 are the source of truth.
+Reference canonical example output (IND+KSA, week May 18-24 2026) *was* `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md` — but `/tmp` is ephemeral and the file is usually gone. The structure above is the source of truth.
 
 ## Step 1 — Compute the week window
 
@@ -128,7 +128,7 @@ For every PagerDuty bot message (`alert_format: pd_bot`) extract:
 - Everything else is unchanged: raw `message_ts` for permalinks, reply-count gating, the Step 3 thread dive, and the `noisy_rule_ids` false-alert check all work the same.
 - **On the first run for such a region, print how many messages matched `alert_match` versus how many were in the channel.** A match count of 0 against a non-empty channel means the tokens are wrong — say so loudly rather than emitting "None this week", which is indistinguishable from a genuinely quiet week and is exactly how a region goes unmonitored without anyone noticing.
 
-If a region's config `notes` flags a routing gap (e.g. IND IRP CrashLoop on `Business Platform Alerts Sev1`), surface it as a prose callout in that region's section, not in the table.
+Routing gaps and other teams' PD services stay **out of the doc** — no callouts (user decision 2026-10-05). Config `notes` about them are for you, to avoid misreading the data.
 
 ## Step 3 — Verify each PD + extract Fix/Resolution + Action Items
 
@@ -137,14 +137,7 @@ For each in-scope alert post, run all checks. **This applies to both `alert_form
 1. **Read its full Slack thread via `slack_read_thread`** using the raw `message_ts` from Step 2. `limit=100` (more if reply count > 100). Three purposes:
    - **(a) False-alert filter.** Any human reply with verbatim "false alert" or "test alert" → bucket FALSE / TEST.
    - **(b) Fix/Resolution column** — **1-2 sentences** (tightened 2026-09-21; the thread link carries the detail): **root-cause diagnosis** (who identified the cause + what they found), **who acted** (engineering owner who drove troubleshooting, NOT the PD-ack-only person, NOT the L2 escalator), **how it closed** (auto-resolved by CubeAPM / human mark-resolve+silence / fix deployed), **outstanding state** (if force-closed but cause persists, flag it).
-   - **(c) Action Items column** — concrete follow-ups: "we should X" / "need to check Y" / `@mention` investigate-asks / deferred fixes ("PR pending", "rollout next week") / unresolved open questions. Format as a markdown task list inside `<ul><li>`:
-     ```html
-     <ul>
-       <li>[ ] Concrete action item with @owner or context</li>
-       <li>[ ] Another item</li>
-     </ul>
-     ```
-     No follow-ups → `<ul><li>[ ] _(none — add as discovered)_</li></ul>`.
+   - **(c) Action Items column** — concrete follow-ups: "we should X" / "need to check Y" / `@mention` investigate-asks / deferred fixes ("PR pending", "rollout next week") / unresolved open questions. Plain text in the cell: `[ ] Concrete action item with @owner or context · [ ] Another item`. No follow-ups → `—`.
 2. **Auto-resolve pattern.** TTR < 5 min, no human ack, no human reply → likely FALSE flap. Confirm via #4.
 3. **Pull alert payload** via `mcp__clarity-pagerduty__get_incident_alerts`:
    - `cube.kind = anomaly` + query `<> 4` / `< 4` on call-rate → traffic-dip detector. `value < anomaly_prediction` → FALSE (quiet period); during a known outage window → REAL (traffic genuinely dropped).
@@ -154,7 +147,7 @@ For each in-scope alert post, run all checks. **This applies to both `alert_form
    ⚠️ **`alert_format: coralogix` regions have no `cube.kind`** — the alert was raised in Coralogix, not CubeAPM, so this payload check does not apply and `get_incident_alerts` may not resolve the post to a PD incident at all. For those, judge real-vs-false from: the thread's own human replies (#1a), the auto-resolve pattern (#2), the region's `noisy_rule_ids`, and the Coralogix priority (a `P2`/`ERROR` that auto-cleared in minutes with no human reply is the usual flap). **Say in the doc that these were classified without payload verification** — and note that a region with an empty `noisy_rule_ids` (MY and MEA today) has no false-alert filter at all yet, so its counts will run high until those ids are captured from a live run.
 4. **Same-pattern repeats:** group consecutive same-title alerts → one row with `Count = N`, time range `start – end`. Merge + dedupe Fix/Resolution + Action Items across the group. BUT: if two fires of the same alert had **different root causes** (verified in their `#sev1-engg` threads — see #5), split them into separate rows; "same title" ≠ "same incident".
 5. **Sev1 cause lives in `#sev1-engg` — always cross-read it.** The per-region `alert_channels` usually carry ONLY the PD-bot ack/resolve for a Sev1; the human root-cause bridge happens in the shared `#sev1-engg`. For every Sev1 (and any in-scope PD whose per-region thread shows only bot ack/resolve), find the SAME incident's `#sev1-engg` thread (match by incident title + timestamp — the `message_ts` differs per channel, so capture each separately) and read it for the real cause. Do NOT conclude "no human investigation" from the per-region thread alone. _(2026-06-30: both `[E-Invoicing] Circuit breaker ZATCA trigger` Sev1s were diagnosed only in `#sev1-engg` — Jun 24 = a pdfGenerator deploy whose pods got stuck, hitting the print API; Jun 25 = the licensing service's Redis URL not updated in Vault during the Redis→Valkey migration. Neither was a ZATCA issue — the alert is generically named and fires on ANY einvoicing circuit-breaker-open.)_
-6. **Surface dependency / cross-team Sev1s that explain einvoicing symptoms** as a clearly-labelled awareness callout under the relevant region — NOT a row in the einvoicing PD tables, NOT counted as an einvoicing real-PD (that respects the `pd_service_prefixes` keep-filter and the manager's "no non-einvoicing PD services" rule). E.g. a `pdfGenerator`, `Prism-Sev1`, or `licensing` Sev1 in `#sev1-engg` that drove an einvoicing print/generate impact. Label it "not an E-Invoicing PD service — for awareness" and link the `#sev1-engg` thread. _(2026-06-30 example: `Prism-Sev1` OOMKill from oversized Notice-Management PDFs — Prism backs einvoicing print/extraction, so flagged as a dependency callout.)_
+6. **Other teams' Sev1s are not in the doc** — no "for awareness" callouts (user removed them 2026-10-05). If one caused an einvoicing PD (e.g. a `pdfGenerator` deploy stuck, hitting print), say so in that PD row's Fix / Resolution and stop there.
 
 Bucket into:
 - **Real** — per-region "Real" table, all 7 columns.
@@ -214,11 +207,11 @@ Then:
 
 Group pass 1 into one sub-table per in-scope region (header `### <label> — N raised this week`, where N = the workflow-escalation count). Each row: `# | Customer | Issue | Fix | Engineering Owner | Status | Slack Thread`. Then add:
 - **Open CFDs handed over** — the open/awaiting workflow CFDs (customer + ticket).
-- **Other customer threads** — a short note listing genuine customer-specific threads discussed in-channel but NOT escalated via the workflow (so the next on-call still sees them), explicitly flagged as not counted as CFDs.
+Nothing else under the CFD tables — no "other customer threads" or "loose ends" lists (user removed them 2026-10-05).
 
 ## Step 4b — Tagged outside support
 
-Follow the sibling skill **v-oncall-tags** (`skills/v-oncall-tags/SKILL.md` in this plugin) for the same week and scopes, and paste its section into the doc. Why it exists: on-call is regularly tagged in infra, product, security and release channels; none of those asks reach Steps 2–4, so an unanswered one silently disappears at handover. If no in-scope block has an `oncall_handle`, skip it and say so in one line.
+Follow the sibling skill **v-oncall-tags** (`skills/v-oncall-tags/SKILL.md` in this plugin) for the same week and scopes, with `--oncall` = this doc's outgoing on-call, and paste its section into the doc. Why it exists: on-call is regularly tagged in infra, product, security and release channels; none of those asks reach Steps 2–4, so an unanswered one silently disappears at handover. If no in-scope block has an `oncall_handle`, skip it and say so in one line.
 
 ## Step 5 — CubeAPM Critical-API Health (1-hour buckets)
 
@@ -255,7 +248,7 @@ Per endpoint compute 4 numbers + 1 flag (`{...}` = the endpoint's `service` + `s
 
 ⚠️ **Parallelism limit (2026-06-30):** the **p99 `[7d:1h]` histogram subqueries are heavy** — a broad one (all `SpringController/v[0-9]+` endpoints × 4 services) fetches ~15k series and takes ~20–25s, right at the 30s proxy ceiling. Running the 5 weekly p99 anchors **in parallel makes 4 of 5 time out** (`context deadline exceeded`). Either (a) run the p99 anchors **sequentially**, or (b) **narrow the `span_name=~` regex** to just the endpoints you need (the in-scope `generate_endpoints` + the top-slowest/error candidates), which drops each query to <10s so a few can run concurrently. The err%/calls queries use `calls_total` (no histogram buckets), are light (~2-4s), and parallelize fine. Recommended flow: 1 broad p99 + 1 broad err% at `wk_eval` (to discover the top-3 candidates), then narrow-regex p99 + err% across the 4 baseline anchors.
 
-Render as one HTML table (wrapped in `<div class="scroll">`): API, Region, p99 max-1h wk (s), p99 max-1h 4w mean (s), Err% wk, Err% 4w mean, Outlier?. **No Mean (ms) columns** — dropped 2026-09-21; the 28d call-weighted aggregate was distorted by any past cascade, always needed a ⚠ caveat, and never drove a decision. That also removes 2 of the ~8 queries per service group.
+Render as one markdown table: API, Region, p99 max-1h wk (s), p99 max-1h 4w mean (s), Err% wk, Err% 4w mean, Outlier?. **No Mean (ms) columns** — dropped 2026-09-21; the 28d call-weighted aggregate was distorted by any past cascade, always needed a ⚠ caveat, and never drove a decision. That also removes 2 of the ~8 queries per service group.
 
 **If no endpoint is an outlier, don't render the table at all** — emit the single line `All <N> generate endpoints within 1.5× their 4-week baseline on p99 and error rate.` A full table of unremarkable numbers is the bulk of what made this doc feel verbose.
 
@@ -310,7 +303,7 @@ Pattern verdict:
 - `Chronic (highly variable)` — per-week values span >5× range; mean unrepresentative, flag unstable
 - `Sparse-data noise` — total errors < 50 in the week despite ≥5k floor
 
-Render each as HTML: #, API, Service, p99 wk (or Err% wk), p99 4w mean (or Err% 4w mean), Pattern.
+Render each as a markdown table: #, API, Service, p99 wk (or Err% wk), p99 4w mean (or Err% 4w mean), Pattern.
 
 ## Step 6 — Compose Key Takeaways
 
@@ -333,19 +326,7 @@ Concretely with the shipped config:
 - `my` → `~/Desktop/einvoicing-core/docs/oncall-handover/my/oncall-handover-<weekstart>.md`
 - `mea` → `~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md`
 
-Prepend this **theme-neutral** `<style>` block (table styling + `.scroll` wrapper) so HTML tables render consistently in VS Code preview, GitHub web, and browsers:
-
-```html
-<style>
-table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
-th, td { border: 1px solid rgba(128,128,128,0.35); padding: 6px 10px; vertical-align: top; text-align: left; }
-th { font-weight: 600; border-bottom-width: 2px; }
-.scroll { overflow-x: auto; }
-ul { margin: 0; padding-left: 18px; }
-</style>
-```
-
-⚠️ **Never hardcode light `background` fills** (e.g. `th{background:#f6f8fa}`, `tr:nth-child(even) td{background:#fbfcfd}`, `code{background:#f0f1f2}`) without an explicit matching text `color`: a dark-themed renderer keeps the light text, so the cells render as light-text-on-light-fill (washed out / unreadable). Let backgrounds inherit the viewer theme; only the border uses a translucent gray that works on any background. (GitHub strips inline `<style>` for security, so this block only affects local/VS Code/browser rendering — GitHub uses its own theme-aware table CSS.)
+**Plain markdown only — no HTML anywhere in the doc** (no `<style>`, `<div>`, `<ul>`, `<li>`, `<br>`). The Claude desktop preview, where the user reads it, shows HTML as raw text (user feedback 2026-10-05). Tables are markdown tables; multi-item cells join items with ` · `.
 
 **Save-only**: write the file and stop. **Do NOT** `git add` / commit / push. Both output repos (`e-invoicing-be`, `einvoicing-core`) are shared team code repos — handover commits pollute PR/changelog views. The outgoing on-call decides branching + commit cadence.
 
@@ -371,7 +352,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - **Slack `from:@me` doesn't work** — use `from:<@USERID>` angle-bracket form, or `in:<@USERID>` for self-DMs.
 - **Sev1 PDs always post to the shared `#sev1-engg` (where the human cause bridge happens); they MAY also mirror to the per-region alert channel.** E.g. the `[EInv-GCC] Zatca … Sev1` fires posted to BOTH `#sev1-engg` and `#einv-gcc-alerts`; the per-region copy was bot-only while the cause was in `#sev1-engg` (so the earlier "Sev1 goes to `#sev1-engg` *only*" was wrong — they can appear in both, same incident but a different `message_ts` per channel). Always read the `#sev1-engg` thread for the cause (Step 3 item 5). Sev2 PDs go to the per-region alert channel (config `alert_channels`).
 - **`#sc-reverse-einvoice-pagerduty-alerts` is reverse-einvoice (different team)** — never include.
-- Region-specific routing gaps (e.g. IND IRP → Coralogix only, zero PD posts on `#irp-prod-alerts`) live in each scope's config `notes` — surface them as prose callouts, not table rows.
+- Region-specific routing gaps (e.g. IND IRP → Coralogix only, zero PD posts on `#irp-prod-alerts`) live in each scope's config `notes` — they explain the data to you; they don't go in the doc.
 
 ## Don't
 
@@ -405,7 +386,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - Top-3 tables render only for regions with something new or worsening; chronic-flat endpoints collapse to one line. The `≥5,000 calls/week` filter still applies.
 - Key takeaways cites specific endpoints, `Nx worse` regressions, and a regression-cluster hypothesis if multiple endpoints moved together.
 - Only the requested `--scope` regions appear; no other-region PDs/CFDs leak in.
-- "Tagged outside support" is present for every scope with an `oncall_handle` (or omitted because N = 0, said in one line), with open and unanswered tags listed first.
+- "Tagged outside support" lists only threads where the outgoing on-call replied (omitted when there are none). No HTML anywhere in the doc.
 - Output path printed to user; nothing auto-sent or committed.
 
 ## Coda push (REMOVED 2026-05-25)
