@@ -244,9 +244,12 @@ Per endpoint compute 4 numbers + 1 flag (`{...}` = the endpoint's `service` + `s
 |---|---|---|
 | p99 max-1h wk (s) | `max_over_time(histogram_quantiles("phi", 0.99, sum by (vmrange,service,span_name) (rate(cube_apm_latency_bucket{...}[1h])))[7d:1h])` | wk_eval |
 | **p99 max-1h 4w mean (s)** | **same `[7d:1h]` query at all 4 baseline anchors, then average the 4 results per endpoint** | w1, w2, w3, w4 |
-| Err% wk | `100 * sum (rate(cube_apm_calls_total{..., status_code="ERROR"}[7d])) / sum (rate(cube_apm_calls_total{...}[7d]))` | wk_eval |
+| Err% wk | **`max_over_time(((sum(rate(err)) / sum(rate(total))) * 100)[7d:1h])`** — the same worst-hour shape as the baseline | wk_eval |
 | **Err% 4w mean** | **`max_over_time(((sum(rate(err)) / sum(rate(total))) * 100)[7d:1h])` at all 4 baseline anchors, then average** | w1, w2, w3, w4 |
-| Outlier? | `yes` if `wk > 1.5 × 4w_mean` on EITHER p99 OR err%; else `no` | — |
+| Errors wk | `sum(increase(cube_apm_calls_total{..., status_code="ERROR"}[7d]))` — raw count, for the sparse check | wk_eval |
+| Outlier? | `yes` if `wk > 1.5 × 4w_mean` on EITHER p99 OR err%, **unless the err% trip rests on < 50 errors in the week** (the same sparse-data rule as the Top-3 tables) — then `no`, and footnote it if the endpoint had zero errors in all 4 baseline weeks | — |
+
+⚠️ **Err% must be worst-hour vs worst-hour.** Until 2026-10-05 the week used a 7-day average (`rate(...[7d])`) while the baseline used the mean of worst hours — two different measures, so the ratio meant nothing (one IND endpoint read 0.79× one way and 2.95× the other). Also expect `rate()` to inflate sparse error series: a 0.76% worst hour was really 23 errors in 48k calls — that's what the < 50 rule is for.
 
 **Query count:** ~8 instant queries per service group (4 weeks × 2 metrics). Run in parallel where possible. The nested `avg_over_time(max_over_time(...[7d:1h])[28d:7d])` shortcut times out at the 30s proxy ceiling — run separate weekly queries.
 
