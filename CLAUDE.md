@@ -1,13 +1,14 @@
 # CLAUDE.md — einvoicing-claude-skills
 
 ## What this is
-ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`. The repo is one marketplace (`einvoicing-team`, manifest in `.claude-plugin/marketplace.json`) with one folder per plugin under `plugins/`: `oncall-handover` (`v-oncall-handover`) and `pr-review` (`v-pr-review`, needs only an authenticated `gh` CLI).
+ClearTax e-invoicing team Claude Code skills, shared across the on-call rotations. Forked from `VashisthaCT/personal-skills` for team use. The on-call handover skill is **config-driven and multi-region** — IND, KSA, EU/Peppol, Malaysia (MY), MEA — selected via `--scope`. The repo is one marketplace (`einvoicing-team`, manifest in `.claude-plugin/marketplace.json`) with one folder per plugin under `plugins/`: `oncall-handover` (`v-oncall-handover`, plus `v-oncall-tags` for its "Tagged outside support" section) and `pr-review` (`v-pr-review`, needs only an authenticated `gh` CLI).
 
 ## Conventions
 - Skills are prefixed `v-` (matching the source repo convention).
 - Layout: `plugins/<plugin>/.claude-plugin/plugin.json` + `plugins/<plugin>/skills/<skill>/SKILL.md` (frontmatter: name, description). Anything a skill reads at runtime lives inside its plugin folder — an installed plugin gets only its own folder. The on-call SKILL.md is the **generic engine**; all region-specific facts live in `plugins/oncall-handover/data/scopes.yaml`.
 - Each plugin has its own `version` in its `plugin.json` — bump the one whose files you change, or existing installs won't update. New plugin → new folder under `plugins/` + an entry in `.claude-plugin/marketplace.json`.
 - **To add or fix a region, edit `plugins/oncall-handover/data/scopes.yaml` only** — never hardcode channels / PD prefixes / services / endpoints back into SKILL.md.
+- Handover docs are **plain markdown — no HTML**; the Claude desktop preview shows HTML as raw text.
 - Drafts only — no skill auto-sends to Slack / Email / Coda / Git. One opt-in exception: `v-pr-review --auto-fix` edits the runner's own PR description. Output location is per-scope (config): IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/`. Configured via `meta.output` (default) + per-scope `output:` overrides in `data/scopes.yaml`.
 
 ## Don't
@@ -30,8 +31,9 @@ The skill requires these MCP servers connected in your Claude Code config:
 - **Slack MCP** — for reading `#sev1-engg`, `#einv-gcc-alerts`, `#e-invoicing-pds`, `#einvoice-l3-support`. Tools used: `slack_read_channel`, `slack_read_thread`, `slack_search_public`.
 - **CubeAPM MCP** (`clarity-cubeapm`) — for metrics queries. Tools used: `query_metrics_instant`, `query_metrics_range`, `list_available_regions`.
 - **PagerDuty MCP** (`clarity-pagerduty`) — optional, used in Step 3 alert-payload verification. Tools: `get_incident_alerts`.
+- **Atlassian MCP** — Step 4 CFD status. Ticket status is the source of truth for open/closed; Slack reactions are only the fallback. Tools: `getJiraIssue` (status of a linked ticket), `searchJiraIssuesUsingJql` (pass 2 — tickets closed during the window whose thread predates it). Needs OAuth authorization before first use.
 
-If any MCP is missing, the skill will degrade gracefully (e.g. skip alert-payload verification if PagerDuty is missing). It will fail to produce useful output if Slack or CubeAPM is missing.
+If any MCP is missing, the skill will degrade gracefully (e.g. skip alert-payload verification if PagerDuty is missing; fall back to Slack reactions and skip the late-closure pass if Atlassian is missing — stating so in the doc rather than silently understating the week). It will fail to produce useful output if Slack or CubeAPM is missing.
 
 ## Tooling quirks (codified during the May 2026 build)
 

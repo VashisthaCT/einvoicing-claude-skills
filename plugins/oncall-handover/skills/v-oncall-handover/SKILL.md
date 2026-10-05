@@ -20,12 +20,13 @@ You are drafting a weekly E-Invoicing on-call handover doc. Run every Monday mor
 Read the config file. **Resolve its path in this order** — a bare relative `data/scopes.yaml` resolves against the session's working directory, which is wrong whenever the user isn't sitting in the plugin folder:
 
 1. `${CLAUDE_PLUGIN_ROOT}/data/scopes.yaml` — set when installed as a plugin. Use this if `CLAUDE_PLUGIN_ROOT` is set.
-2. `<repo-root>/plugins/oncall-handover/data/scopes.yaml` — if running inside a clone of this repo (the dir containing `.claude-plugin/marketplace.json`).
-3. `~/dev/einvoicing-claude-skills/plugins/oncall-handover/data/scopes.yaml` — last-resort fallback for a bare-copied skill.
+2. `<this skill's real directory>/../../data/scopes.yaml` — resolve symlinks first (`realpath`), since a skill symlinked into `~/.claude/skills/` otherwise points at the wrong parent. Covers both this repo and the personal-skills copy, which keeps the same file at its repo root.
+3. `<repo-root>/plugins/oncall-handover/data/scopes.yaml` — if running inside a clone of this repo (the dir containing `.claude-plugin/marketplace.json`).
+4. `~/dev/einvoicing-claude-skills/plugins/oncall-handover/data/scopes.yaml` — last-resort fallback for a bare-copied skill.
 
 If none resolve, stop and tell the user the config is missing — do NOT fall back to hardcoded channels or endpoints.
 
-Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `customers`, `notes`, and (optional) `output` override.
+Resolve `--scope` into the list of scope blocks. From `meta` load: `sev1_channel`, `cubeapm_region`, `output` (default output location), `default_scope`. Load the shared `engineers` roster and `l2_escalators` exclusion list. For each in-scope block, you now have: `label`, `pd_service_prefixes`, (optional) `pd_workload_filter`, `alert_channels`, `l3_channels`, `cubeapm_services`, `generate_endpoints`, `topk_service_regex`, `noisy_rule_ids`, `jira_projects`, (optional) `jira_pass2_filter` (extra JQL for Step 4 pass 2), (optional) `oncall_handle` (used by Step 4b), `customers`, `notes`, (optional) `output` override, and (optional) `alert_format` + `alert_match` — `alert_format` defaults to `pd_bot` when absent; `coralogix` selects the alternate recognizer in Step 2.
 
 **If a requested scope's block is unpopulated** (empty `alert_channels`/`generate_endpoints`, or `notes: PENDING DISCOVERY`): stop and tell the user that scope isn't configured yet, and point them at `data/scopes.yaml` to fill it. Don't fabricate channels/endpoints.
 
@@ -39,26 +40,38 @@ One section per in-scope region (in `--scope` order). Template per region `<R>` 
 # Mon <date> → Sun <date>  ·  Scope: <labels, comma-sep>
 
 ## PagerDuty Incidents — <R label>
-[table: Severity | Count | Incident | PD Service | Slack Thread | Fix / Resolution | Action Items]
+[table: Severity | Count | Incident | Slack Thread | Fix / Resolution | Action Items]
+PD Service is NOT a column — name the region's PD service(s) once in a line beneath the heading. Within one region it barely varies (EU is a single service carrying both urgencies), so a column of it is dead weight on every row.
 Incident column: 1-2 sentences, layman terms (no rule_ids, no JedisPool, no `cube.kind=static`). Mention day-of-week if useful.
-Fix / Resolution column: auto-populated from thread reading (Step 3). 2-4 sentences. Who diagnosed root cause, who acted, how it closed (auto-resolve vs human-resolve vs fix-deployed).
-Action Items column: markdown task list (`- [ ] item`) inside an HTML `<ul><li>`. Auto-populated where the thread surfaced concrete follow-ups; otherwise `<ul><li>[ ] _(none — add as discovered)_</li></ul>`. On-call edits the source MD directly to add items.
-(If a region had no real PDs: "None this week" + any routing-gap note from its config `notes`.)
+Fix / Resolution column: auto-populated from thread reading (Step 3). **1-2 sentences.** Root cause, who acted, how it closed (auto-resolve vs human-resolve vs fix-deployed). Don't narrate the investigation — the thread link carries the detail for anyone who needs it.
+Action Items column: plain text, `[ ] item` per follow-up, several joined with ` · `. Auto-populated where the thread surfaced concrete follow-ups; otherwise `—`. On-call edits the source MD directly to add items.
+(If a region had no real PDs: just "None this week.")
 
-## PagerDuty Incidents — Noise/False Alerts
-[combined across ALL in-scope regions in one table: Region | Count | Alert | PD Service]
-(omit section if zero)
+## Noise / False Alerts
+ONE line per in-scope region — not a table:
+`**<R label>** — N false alerts (rule_ids <ids>). <one clause naming the dominant pattern.>`
+The per-alert breakdown was never acted on; the count plus the rule_ids is what tells the next on-call whether a rule still needs tuning. (Omit the section entirely if zero across all regions.)
 
 ## Customer-Facing Defects (CFDs)
-### <R label> — N threads
-[Customer | Issue | Short-term Fix | Long-term Fix | Engineering Owner | Status | Slack Thread]
-(one sub-table per in-scope region that shares/owns an L3 channel)
+### <R label> — N raised this week
+[Customer | Issue | Fix | Engineering Owner | Status | Slack Thread]
+Short-term Fix and Long-term Fix collapse into ONE `Fix` column — in practice short-term was `none` on most rows and the pair read as padding. Where both genuinely exist, write `<short-term> → <long-term>`.
+
+### <R label> — closed this week, raised earlier (N)
+[Ticket | Customer | Issue | Closed as | Engineering Owner | Slack Thread]
+Escalations whose thread predates this window but whose JIRA ticket reached a done status during it (Step 4, pass 2). Omit the sub-section when N = 0.
+
+## Tagged outside support — N tags in M channels
+[Channel | Asked by | Ask | Type | Outcome | Link] — produced by the sibling skill **v-oncall-tags** (Step 4b): only threads where the on-call replied. Open first. Omit when N = 0.
 
 ## Critical-API Health: generate paths
-[table — every in-scope region's generate_endpoints, with mean wk vs 4w, p99 max-1h wk vs 4w mean, err% wk vs 4w mean, outlier flag if wk > 1.5× 4w mean. Region column distinguishes them.]
+[table: API | Region | p99 max-1h wk (s) | p99 4w mean (s) | Err% wk | Err% 4w mean | Outlier?]
+The two legacy Mean (ms) columns are **dropped** — they used a 28d call-weighted aggregate that one past cascade distorts, always shipped with a ⚠ caveat, and nobody acted on them. p99 and err% are what drive decisions.
+If NO endpoint is an outlier, replace the table with one line: `All <N> generate endpoints within 1.5× their 4-week baseline on p99 and error rate.`
 
-## Top 3 Slowest + Top 3 Error-Prone APIs (per region, this week vs 4w mean)
-### <R label> — Top 3 slowest (p99 max in 1h)      [one pair of tables per in-scope region]
+## Top 3 Slowest + Top 3 Error-Prone APIs
+Render a region's pair of tables **only when that region has at least one entry that is new or worsening** (wk > 1.5× its 4w mean). A chronically-slow-but-flat endpoint is not news every single week — collapse those into one line: `Chronic, flat vs baseline: <api> (p99 <n>s), <api> (err <n>%).`
+### <R label> — Top 3 slowest (p99 max in 1h)      [only when the gate above is met]
 ### <R label> — Top 3 error-prone (max err% in 1h)
 
 [Each table: # | API | Service | p99 wk (s) or Err% wk | p99 4w mean or Err% 4w mean | Pattern]
@@ -67,7 +80,7 @@ Action Items column: markdown task list (`- [ ] item`) inside an HTML `<ul><li>`
 - [bullets — regression clusters, zombie endpoints, 1h-vs-15min noise notes, filter tweaks]
 ```
 
-Reference canonical example output (IND+KSA, week May 18-24 2026) *was* `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md` — but `/tmp` is ephemeral and the file is usually gone. The structure above plus the `<style>` block in Step 7 are the source of truth.
+Reference canonical example output (IND+KSA, week May 18-24 2026) *was* `/tmp/oncall-handover-test/2026/oncall-handover-2026-05-18.md` — but `/tmp` is ephemeral and the file is usually gone. The structure above is the source of truth.
 
 ## Step 1 — Compute the week window
 
@@ -86,11 +99,13 @@ For Slack `oldest`/`latest`, use Unix-second `.000000` strings. For PagerDuty `s
 
 ## Step 2 — Harvest PagerDuty bot posts (Slack-first, PD API for verification only)
 
-PD `list_incidents` API has empty `assignments[]` for our team — useless for attribution. Slack PD-bot posts are the source of truth for who-handled-what.
+PD `list_incidents` API has empty `assignments[]` for our team — useless for attribution. The Slack alert posts are the source of truth for who-handled-what, in whichever format the region uses.
 
 **Channels to read** = `meta.sev1_channel` (shared) + the union of every in-scope block's `alert_channels`. Use `slack_read_channel` with `oldest`/`latest`, paginate via cursor, cap 300/channel.
 
-For every PagerDuty bot message extract:
+**Two alert formats exist — check each scope's `alert_format` before parsing.** Default is `pd_bot`. A scope set to `coralogix` does NOT receive classic PagerDuty-incident-bot posts, so everything below about a "PD Service" field simply does not apply to it, and parsing it as `pd_bot` silently yields zero alerts for that region every single week.
+
+For every PagerDuty bot message (`alert_format: pd_bot`) extract:
 - **Message TS (raw, with microseconds)** — capture `message_ts` from the Slack response verbatim (e.g. `1779497223.046859`). **Do NOT synthesize this from the IST timestamp string** — two confirmed failure modes:
   1. **Microseconds zero-padding**: real Slack `ts` always has non-zero micros. Constructing `p<unix_seconds>000000` lands near but not on the message.
   2. **IST→UTC timezone bug**: parsing `02:22:43 IST` and computing unix as if UTC gives a link 5h30 ahead. Real: `02:22:43 IST → 20:52:43 UTC (prev day) → 1779310363`. Always use the API-returned `message_ts`.
@@ -106,31 +121,34 @@ For every PagerDuty bot message extract:
 
 **`pd_workload_filter` exception (one documented carve-out — optional, off by default).** If an in-scope block has a `pd_workload_filter` regex, it means that region has **no dedicated PD service yet** and its alerts currently land on the shared `DevOps Alerts Sev 2` service. For that region only: ALSO keep a `DevOps Alerts Sev 2` post if its alert body / workload name matches the region's `pd_workload_filter`. This is the single exception to "drop DevOps Alerts". Attribute such a kept post to that region. (No scope ships with this enabled by default; MEA carries the recipe commented out — uncomment + add `#devops-alerts-sev2` to its `alert_channels` to capture MEA pages before its dedicated service goes live.)
 
-If a region's config `notes` flags a routing gap (e.g. IND IRP CrashLoop on `Business Platform Alerts Sev1`), surface it as a prose callout in that region's section, not in the table.
+**`alert_format: coralogix` (Malaysia today).** Some regions never get a PagerDuty-incident-bot post at all. Their alerts are raised in Coralogix, posted to the region's Slack channel in Coralogix's own layout, and fanned out to PagerDuty separately — so the Slack message carries **no PD Service field**, and the strict filter above would drop every one of them, leaving that region reading "None this week" forever. For a scope whose `alert_format` is `coralogix`:
+
+- **Identify an alert** by the tokens in `alert_match` (config), not by a PD Service prefix — e.g. a `[CRITICAL]` / `[FIRING]` / `[ERROR]` marker plus the region's application name (`ct-my-prod`) or alert-name tokens (`Einvoicing Core My`, `Routing MY`).
+- **Severity** maps from the Coralogix priority, not PD urgency: `P1` / `CRITICAL` → Sev1-equivalent, `P2` / `ERROR` → Sev2-equivalent. Record which mapping you used.
+- **PD Service** — there is none in the message. Use the region's `pd_service_prefixes[0]` as the display value so the doc stays consistent across regions, and note once under the table that this region's pages originate in Coralogix.
+- Everything else is unchanged: raw `message_ts` for permalinks, reply-count gating, the Step 3 thread dive, and the `noisy_rule_ids` false-alert check all work the same.
+- **On the first run for such a region, print how many messages matched `alert_match` versus how many were in the channel.** A match count of 0 against a non-empty channel means the tokens are wrong — say so loudly rather than emitting "None this week", which is indistinguishable from a genuinely quiet week and is exactly how a region goes unmonitored without anyone noticing.
+
+Routing gaps and other teams' PD services stay **out of the doc** — no callouts (user decision 2026-10-05). Config `notes` about them are for you, to avoid misreading the data.
 
 ## Step 3 — Verify each PD + extract Fix/Resolution + Action Items
 
-For each in-scope PD bot post, run all checks:
+For each in-scope alert post, run all checks. **This applies to both `alert_format`s** — a Coralogix-format alert (Step 2) gets the same thread dive, false-alert filter, Fix/Resolution and Action Items treatment as a PD-bot post. Where a check below names a PD-only field (urgency, PD Service), use the Coralogix equivalent Step 2 recorded.
 
 1. **Read its full Slack thread via `slack_read_thread`** using the raw `message_ts` from Step 2. `limit=100` (more if reply count > 100). Three purposes:
    - **(a) False-alert filter.** Any human reply with verbatim "false alert" or "test alert" → bucket FALSE / TEST.
-   - **(b) Fix/Resolution column** — 2-4 sentences: **root-cause diagnosis** (who identified the cause + what they found), **who acted** (engineering owner who drove troubleshooting, NOT the PD-ack-only person, NOT the L2 escalator), **how it closed** (auto-resolved by CubeAPM / human mark-resolve+silence / fix deployed), **outstanding state** (if force-closed but cause persists, flag it).
-   - **(c) Action Items column** — concrete follow-ups: "we should X" / "need to check Y" / `@mention` investigate-asks / deferred fixes ("PR pending", "rollout next week") / unresolved open questions. Format as a markdown task list inside `<ul><li>`:
-     ```html
-     <ul>
-       <li>[ ] Concrete action item with @owner or context</li>
-       <li>[ ] Another item</li>
-     </ul>
-     ```
-     No follow-ups → `<ul><li>[ ] _(none — add as discovered)_</li></ul>`.
+   - **(b) Fix/Resolution column** — **1-2 sentences** (tightened 2026-09-21; the thread link carries the detail): **root-cause diagnosis** (who identified the cause + what they found), **who acted** (engineering owner who drove troubleshooting, NOT the PD-ack-only person, NOT the L2 escalator), **how it closed** (auto-resolved by CubeAPM / human mark-resolve+silence / fix deployed), **outstanding state** (if force-closed but cause persists, flag it).
+   - **(c) Action Items column** — concrete follow-ups: "we should X" / "need to check Y" / `@mention` investigate-asks / deferred fixes ("PR pending", "rollout next week") / unresolved open questions. Plain text in the cell: `[ ] Concrete action item with @owner or context · [ ] Another item`. No follow-ups → `—`.
 2. **Auto-resolve pattern.** TTR < 5 min, no human ack, no human reply → likely FALSE flap. Confirm via #4.
 3. **Pull alert payload** via `mcp__clarity-pagerduty__get_incident_alerts`:
    - `cube.kind = anomaly` + query `<> 4` / `< 4` on call-rate → traffic-dip detector. `value < anomaly_prediction` → FALSE (quiet period); during a known outage window → REAL (traffic genuinely dropped).
    - annotation contains `Test alert` / `Notification test` → TEST.
    - `cube.kind = static` (e.g. `Error percentage (High)`, `> 10%` / `> 25%`) → REAL static-threshold breach.
+
+   ⚠️ **`alert_format: coralogix` regions have no `cube.kind`** — the alert was raised in Coralogix, not CubeAPM, so this payload check does not apply and `get_incident_alerts` may not resolve the post to a PD incident at all. For those, judge real-vs-false from: the thread's own human replies (#1a), the auto-resolve pattern (#2), the region's `noisy_rule_ids`, and the Coralogix priority (a `P2`/`ERROR` that auto-cleared in minutes with no human reply is the usual flap). **Say in the doc that these were classified without payload verification** — and note that a region with an empty `noisy_rule_ids` (MY and MEA today) has no false-alert filter at all yet, so its counts will run high until those ids are captured from a live run.
 4. **Same-pattern repeats:** group consecutive same-title alerts → one row with `Count = N`, time range `start – end`. Merge + dedupe Fix/Resolution + Action Items across the group. BUT: if two fires of the same alert had **different root causes** (verified in their `#sev1-engg` threads — see #5), split them into separate rows; "same title" ≠ "same incident".
 5. **Sev1 cause lives in `#sev1-engg` — always cross-read it.** The per-region `alert_channels` usually carry ONLY the PD-bot ack/resolve for a Sev1; the human root-cause bridge happens in the shared `#sev1-engg`. For every Sev1 (and any in-scope PD whose per-region thread shows only bot ack/resolve), find the SAME incident's `#sev1-engg` thread (match by incident title + timestamp — the `message_ts` differs per channel, so capture each separately) and read it for the real cause. Do NOT conclude "no human investigation" from the per-region thread alone. _(2026-06-30: both `[E-Invoicing] Circuit breaker ZATCA trigger` Sev1s were diagnosed only in `#sev1-engg` — Jun 24 = a pdfGenerator deploy whose pods got stuck, hitting the print API; Jun 25 = the licensing service's Redis URL not updated in Vault during the Redis→Valkey migration. Neither was a ZATCA issue — the alert is generically named and fires on ANY einvoicing circuit-breaker-open.)_
-6. **Surface dependency / cross-team Sev1s that explain einvoicing symptoms** as a clearly-labelled awareness callout under the relevant region — NOT a row in the einvoicing PD tables, NOT counted as an einvoicing real-PD (that respects the `pd_service_prefixes` keep-filter and the manager's "no non-einvoicing PD services" rule). E.g. a `pdfGenerator`, `Prism-Sev1`, or `licensing` Sev1 in `#sev1-engg` that drove an einvoicing print/generate impact. Label it "not an E-Invoicing PD service — for awareness" and link the `#sev1-engg` thread. _(2026-06-30 example: `Prism-Sev1` OOMKill from oversized Notice-Management PDFs — Prism backs einvoicing print/extraction, so flagged as a dependency callout.)_
+6. **Other teams' Sev1s are not in the doc** — no "for awareness" callouts (user removed them 2026-10-05). If one caused an einvoicing PD (e.g. a `pdfGenerator` deploy stuck, hitting print), say so in that PD row's Fix / Resolution and stop there.
 
 Bucket into:
 - **Real** — per-region "Real" table, all 7 columns.
@@ -150,20 +168,51 @@ For each `l3_workflow_bot` escalation post in the window:
 2. **Read the full thread** (via the bot post's raw `message_ts`) to pull:
    - **Issue** verbatim (one line).
    - **Engineering Owner** = first **engineer** (from the shared `engineers` roster) to ack or post a substantive technical reply. Distinguish from `Submitted By` (the L2 escalator). Never attribute to anyone in `l2_escalators`.
-   - **Short-term Fix** — mitigation applied during the incident (often `none`).
-   - **Long-term Fix** — permanent fix planned (or "Closed not-a-bug").
-   - **Status**:
-     - `not-a-bug` reaction + `:white_check_mark:` → **Closed not-a-bug**
-     - `:white_check_mark:` only → **Resolved**
-     - engineer "closing the thread" near the end → **Resolved** / **Closed not-a-bug** as indicated
-     - call scheduled / awaiting customer → **Awaiting customer**
-     - no closure signal + last message > 2 days old → **Open**
+   - **Fix** — one column. The permanent fix, or "Closed not-a-bug". Only when a distinct mitigation was applied first does it become `<short-term> → <long-term>`; don't write `none → <fix>`.
+   - **Status — read it from JIRA, not from reactions.** The bot template carries a `JIRA Link`. Resolve that ticket with `mcp__de387922-450f-43fc-88e8-473a7b0c3961__getJiraIssue`. **`statusCategory` decides open vs closed** — every project spells its workflow differently, and the category is the one field Jira guarantees. **The status NAME carries the close reason** — verified 2026-10-05: in EIOCJ/GOCJ the Done transition usually leaves `resolution` empty (66 of 118 EIOCJ Done tickets), and the real reason lives in names like `Gov Issues`, `Invalid / Too Old`, `Cannot Reproduce`, `Duplicate`. So:
+     - `Done` → **Closed — `<status name verbatim>`** (append the resolution only when it is non-empty). Write the name as-is; readers understand "Invalid / Too Old" or "Gov Issues" without a mapping table, and a table would drift as workflows change.
+     - `In Progress` → **Open (in progress)**
+     - `To Do` → **Open**
+
+     Thread signals override in one direction only: a thread clearly saying *call scheduled* / *awaiting customer input* → **Awaiting customer**, even while the ticket is still open.
+   - **Reaction fallback** — use ONLY when the template carries no JIRA Link, the link won't parse, or the Atlassian MCP is unavailable. Then: `not-a-bug` + `:white_check_mark:` → Closed not-a-bug; `:white_check_mark:` only → Resolved; an engineer closing the thread → as indicated; no closure signal and last message > 2 days old → Open. **Suffix every reaction-derived status with `~`** and add one footnote under the table: `~ status inferred from Slack reactions — no JIRA ticket linked.`
+     ⚠️ Reactions lag reality. Nobody goes back to add a tick when a ticket closes weeks later, which is precisely how long-pending defects kept getting reported as still-open. Treat the tick as a weak signal, the ticket as the truth.
    - **Slack Thread** permalink — `https://cleartaxtech.slack.com/archives/<l3_channel_id>/p<parent_ts_no_dot>`.
 3. **Keep only in-scope regions.** Drop escalations whose Product / JIRA-project maps to a region not in `--scope` (those belong to other on-calls).
 
-Group into one sub-table per in-scope region (header `### <label> — N threads`, where N = the workflow-escalation count). Each row: `# | Customer | Issue | Short-term Fix | Long-term Fix | Engineering Owner | Status | Slack Thread`. Then add:
+### Pass 2 — closed this week, raised earlier
+
+Pass 1 only sees threads the bot posted **inside** the window. A defect raised weeks ago and closed during this on-call is invisible to it — the week's most useful outcome goes unreported. Catch those from JIRA rather than Slack.
+
+For each in-scope region, take its `jira_projects` from config and query for tickets that reached a done status inside the window, via `mcp__de387922-450f-43fc-88e8-473a7b0c3961__searchJiraIssuesUsingJql`:
+
+```
+project IN (<keys>) AND statusCategory = Done
+  AND statusCategoryChangedDate >= "<weekstart> 00:00" AND statusCategoryChangedDate <= "<weekstart+6d> 23:59"
+  [AND <scope's jira_pass2_filter, if set>]
+ORDER BY statusCategoryChangedDate DESC
+```
+
+⚠️ **Never use `resolutiondate` here.** It is only set when a ticket gets a resolution, and EIOCJ's Done transition doesn't set one — on 2026-10-05 a `resolutiondate` query found 1 of the week's 5 closures. `statusCategoryChangedDate` records when the ticket entered Done, whatever the resolution. Jira evaluates these dates in the account's timezone (+05:30 here), so the bounds above are IST.
+
+Then:
+1. **Drop every ticket pass 1 already captured** — match on ticket key, so nothing is double-counted between the two tables.
+2. **Keep only escalations.** The `*OCJ` projects are mostly Salesforce-created escalations, but not only — they also hold internal dev tasks and months-old Salesforce feature "Story" tickets. A scope's `jira_pass2_filter` (e.g. `issuetype = Bug` for ind/ksa, verified 2026-10-05) keeps pass 2 to real escalations.
+3. For each survivor pull: ticket key, customer, one-line issue, `Closed as` (the status name verbatim, plus the resolution if non-empty), engineering owner (the assignee, mapped through the shared `engineers` roster; fall back to the assignee's display name), and the originating Slack thread permalink where the ticket carries one.
+4. Render in the `closed this week, raised earlier` sub-table. Omit the sub-section when it comes back empty.
+5. **Escalations with no Jira ticket are invisible to this query.** When reading the L3 channel turns up an older ticket-less escalation that closed this week (e.g. a fix confirmed in-thread), add it to the same table with `—` as the ticket. Otherwise say once under the table that ticket-less escalations aren't tracked here.
+
+**If the Atlassian MCP is unavailable:** skip pass 2, fall back to reactions in pass 1, and state once in the doc — `Late-closure pass skipped — Atlassian MCP unavailable; statuses below are Slack-inferred.` Never drop it silently, or the doc quietly understates the week again.
+
+### Rendering
+
+Group pass 1 into one sub-table per in-scope region (header `### <label> — N raised this week`, where N = the workflow-escalation count). Each row: `# | Customer | Issue | Fix | Engineering Owner | Status | Slack Thread`. Then add:
 - **Open CFDs handed over** — the open/awaiting workflow CFDs (customer + ticket).
-- **Other customer threads** — a short note listing genuine customer-specific threads discussed in-channel but NOT escalated via the workflow (so the next on-call still sees them), explicitly flagged as not counted as CFDs.
+Nothing else under the CFD tables — no "other customer threads" or "loose ends" lists (user removed them 2026-10-05).
+
+## Step 4b — Tagged outside support
+
+Follow the sibling skill **v-oncall-tags** (`skills/v-oncall-tags/SKILL.md` in this plugin) for the same week and scopes, with `--oncall` = this doc's outgoing on-call, and paste its section into the doc. Why it exists: on-call is regularly tagged in infra, product, security and release channels; none of those asks reach Steps 2–4, so an unanswered one silently disappears at handover. If no in-scope block has an `oncall_handle`, skip it and say so in one line.
 
 ## Step 5 — CubeAPM Critical-API Health (1-hour buckets)
 
@@ -183,23 +232,26 @@ Use `mcp__clarity-cubeapm__query_metrics_instant`. **Region param = `meta.cubeap
 
 Rows = the union of every in-scope block's `generate_endpoints` (with a Region column). For KSA the span path is on `<service>` per its config; for IND it's split across einvoicingbe + integrations services; for other regions, whatever its config lists.
 
-Per endpoint compute 6 numbers + 1 flag (`{...}` = the endpoint's `service` + `span_name` from config, `span_kind="server"`):
+Per endpoint compute 4 numbers + 1 flag (`{...}` = the endpoint's `service` + `span_name` from config, `span_kind="server"`):
 
 | Column | Query shape (PromQL) | Eval time(s) |
 |---|---|---|
-| Mean wk (ms) | `1000 * sum by (service,span_name) (rate(cube_apm_latency_sum{...}[7d])) / sum by (service,span_name) (rate(cube_apm_latency_count{...}[7d]))` | wk_eval |
-| Mean 4w avg (ms) | same shape, `[28d]` rate window — legacy 28d call-weighted aggregate | baseline_eval_w4 |
 | p99 max-1h wk (s) | `max_over_time(histogram_quantiles("phi", 0.99, sum by (vmrange,service,span_name) (rate(cube_apm_latency_bucket{...}[1h])))[7d:1h])` | wk_eval |
 | **p99 max-1h 4w mean (s)** | **same `[7d:1h]` query at all 4 baseline anchors, then average the 4 results per endpoint** | w1, w2, w3, w4 |
-| Err% wk | `100 * sum (rate(cube_apm_calls_total{..., status_code="ERROR"}[7d])) / sum (rate(cube_apm_calls_total{...}[7d]))` | wk_eval |
+| Err% wk | **`max_over_time(((sum(rate(err)) / sum(rate(total))) * 100)[7d:1h])`** — the same worst-hour shape as the baseline | wk_eval |
 | **Err% 4w mean** | **`max_over_time(((sum(rate(err)) / sum(rate(total))) * 100)[7d:1h])` at all 4 baseline anchors, then average** | w1, w2, w3, w4 |
-| Outlier? | `yes` if `wk > 1.5 × 4w_mean` on EITHER p99 OR err%; else `no` | — |
+| Errors wk | `sum(increase(cube_apm_calls_total{..., status_code="ERROR"}[7d]))` — raw count, for the sparse check | wk_eval |
+| Outlier? | `yes` if `wk > 1.5 × 4w_mean` on EITHER p99 OR err%, **unless the err% trip rests on < 50 errors in the week** (the same sparse-data rule as the Top-3 tables) — then `no`, and footnote it if the endpoint had zero errors in all 4 baseline weeks | — |
+
+⚠️ **Err% must be worst-hour vs worst-hour.** Until 2026-10-05 the week used a 7-day average (`rate(...[7d])`) while the baseline used the mean of worst hours — two different measures, so the ratio meant nothing (one IND endpoint read 0.79× one way and 2.95× the other). Also expect `rate()` to inflate sparse error series: a 0.76% worst hour was really 23 errors in 48k calls — that's what the < 50 rule is for.
 
 **Query count:** ~8 instant queries per service group (4 weeks × 2 metrics). Run in parallel where possible. The nested `avg_over_time(max_over_time(...[7d:1h])[28d:7d])` shortcut times out at the 30s proxy ceiling — run separate weekly queries.
 
 ⚠️ **Parallelism limit (2026-06-30):** the **p99 `[7d:1h]` histogram subqueries are heavy** — a broad one (all `SpringController/v[0-9]+` endpoints × 4 services) fetches ~15k series and takes ~20–25s, right at the 30s proxy ceiling. Running the 5 weekly p99 anchors **in parallel makes 4 of 5 time out** (`context deadline exceeded`). Either (a) run the p99 anchors **sequentially**, or (b) **narrow the `span_name=~` regex** to just the endpoints you need (the in-scope `generate_endpoints` + the top-slowest/error candidates), which drops each query to <10s so a few can run concurrently. The err%/calls queries use `calls_total` (no histogram buckets), are light (~2-4s), and parallelize fine. Recommended flow: 1 broad p99 + 1 broad err% at `wk_eval` (to discover the top-3 candidates), then narrow-regex p99 + err% across the 4 baseline anchors.
 
-Render as one HTML table (wrapped in `<div class="scroll">`): API, Region, Mean wk (ms), Mean 4w avg (ms, legacy 28d aggregate), p99 max-1h wk (s), p99 max-1h 4w mean (s), Err% wk, Err% 4w mean, Outlier?.
+Render as one markdown table: API, Region, p99 max-1h wk (s), p99 max-1h 4w mean (s), Err% wk, Err% 4w mean, Outlier?. **No Mean (ms) columns** — dropped 2026-09-21; the 28d call-weighted aggregate was distorted by any past cascade, always needed a ⚠ caveat, and never drove a decision. That also removes 2 of the ~8 queries per service group.
+
+**If no endpoint is an outlier, don't render the table at all** — emit the single line `All <N> generate endpoints within 1.5× their 4-week baseline on p99 and error rate.` A full table of unremarkable numbers is the bulk of what made this doc feel verbose.
 
 **Baseline note (always include below the table):** the 4w mean dilutes single-week outage spikes; the legacy Mean (ms) column still uses 28d call-weighted aggregate — flag with ⚠ any row where it looks artificially high from a brief past cascade dominating a small endpoint's 28d call total.
 
@@ -252,7 +304,7 @@ Pattern verdict:
 - `Chronic (highly variable)` — per-week values span >5× range; mean unrepresentative, flag unstable
 - `Sparse-data noise` — total errors < 50 in the week despite ≥5k floor
 
-Render each as HTML: #, API, Service, p99 wk (or Err% wk), p99 4w mean (or Err% 4w mean), Pattern.
+Render each as a markdown table: #, API, Service, p99 wk (or Err% wk), p99 4w mean (or Err% 4w mean), Pattern.
 
 ## Step 6 — Compose Key Takeaways
 
@@ -275,19 +327,7 @@ Concretely with the shipped config:
 - `my` → `~/Desktop/einvoicing-core/docs/oncall-handover/my/oncall-handover-<weekstart>.md`
 - `mea` → `~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md`
 
-Prepend this **theme-neutral** `<style>` block (table styling + `.scroll` wrapper) so HTML tables render consistently in VS Code preview, GitHub web, and browsers:
-
-```html
-<style>
-table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
-th, td { border: 1px solid rgba(128,128,128,0.35); padding: 6px 10px; vertical-align: top; text-align: left; }
-th { font-weight: 600; border-bottom-width: 2px; }
-.scroll { overflow-x: auto; }
-ul { margin: 0; padding-left: 18px; }
-</style>
-```
-
-⚠️ **Never hardcode light `background` fills** (e.g. `th{background:#f6f8fa}`, `tr:nth-child(even) td{background:#fbfcfd}`, `code{background:#f0f1f2}`) without an explicit matching text `color`: a dark-themed renderer keeps the light text, so the cells render as light-text-on-light-fill (washed out / unreadable). Let backgrounds inherit the viewer theme; only the border uses a translucent gray that works on any background. (GitHub strips inline `<style>` for security, so this block only affects local/VS Code/browser rendering — GitHub uses its own theme-aware table CSS.)
+**Plain markdown only — no HTML anywhere in the doc** (no `<style>`, `<div>`, `<ul>`, `<li>`, `<br>`). The Claude desktop preview, where the user reads it, shows HTML as raw text (user feedback 2026-10-05). Tables are markdown tables; multi-item cells join items with ` · `.
 
 **Save-only**: write the file and stop. **Do NOT** `git add` / commit / push. Both output repos (`e-invoicing-be`, `einvoicing-core`) are shared team code repos — handover commits pollute PR/changelog views. The outgoing on-call decides branching + commit cadence.
 
@@ -313,7 +353,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - **Slack `from:@me` doesn't work** — use `from:<@USERID>` angle-bracket form, or `in:<@USERID>` for self-DMs.
 - **Sev1 PDs always post to the shared `#sev1-engg` (where the human cause bridge happens); they MAY also mirror to the per-region alert channel.** E.g. the `[EInv-GCC] Zatca … Sev1` fires posted to BOTH `#sev1-engg` and `#einv-gcc-alerts`; the per-region copy was bot-only while the cause was in `#sev1-engg` (so the earlier "Sev1 goes to `#sev1-engg` *only*" was wrong — they can appear in both, same incident but a different `message_ts` per channel). Always read the `#sev1-engg` thread for the cause (Step 3 item 5). Sev2 PDs go to the per-region alert channel (config `alert_channels`).
 - **`#sc-reverse-einvoice-pagerduty-alerts` is reverse-einvoice (different team)** — never include.
-- Region-specific routing gaps (e.g. IND IRP → Coralogix only, zero PD posts on `#irp-prod-alerts`) live in each scope's config `notes` — surface them as prose callouts, not table rows.
+- Region-specific routing gaps (e.g. IND IRP → Coralogix only, zero PD posts on `#irp-prod-alerts`) live in each scope's config `notes` — they explain the data to you; they don't go in the doc.
 
 ## Don't
 
@@ -337,13 +377,17 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 ## Verifiable success criteria
 
 - Output saved to the config-resolved per-scope path (IND/KSA → `e-invoicing-be/oncall-handover/<year>/`; EU/MY/MEA → `einvoicing-core/docs/oncall-handover/<scope>/`), filename `oncall-handover-<weekstart>.md`, parent dirs created.
-- Every PD row has 7 columns: Severity | Count | Incident | PD Service | Slack Thread | Fix / Resolution | Action Items.
+- Every PD row has 6 columns: Severity | Count | Incident | Slack Thread | Fix / Resolution | Action Items — PD service named once under the heading, never as a column. Fix / Resolution is 1-2 sentences.
 - Every PD permalink uses the real `message_ts` (sub-second micros present, not `000000`).
-- Critical-API table has one row per in-scope `generate_endpoint` (5 KSA + 4 IND for the default scope). Baseline header reads "p99 max-1h 4w **mean** (s)" / "Err% 4w **mean**".
-- If 0 outliers: Outlier Deep-Dive omitted entirely.
-- One pair of Top-3 tables (slowest, error-prone) per in-scope region, with the `≥5,000 calls/week` filter.
+- Noise / False Alerts is one line per region, not a table.
+- Every CFD status traces to a Jira `statusCategory`, or carries a trailing `~` plus the footnote when it fell back to Slack reactions. A doc with no `~` and no Jira lookups performed is wrong.
+- The `closed this week, raised earlier` sub-table is present whenever pass 2 returned anything, and the Atlassian-unavailable note is present whenever it was skipped. Silence on both is a failure.
+- Critical-API table has one row per in-scope `generate_endpoint` (5 KSA + 4 IND for the default scope) and **no Mean (ms) columns**. Baseline header reads "p99 max-1h 4w **mean** (s)" / "Err% 4w **mean**".
+- If 0 outliers: the Critical-API table collapses to the one-line all-within-baseline statement, and Outlier Deep-Dive is omitted entirely.
+- Top-3 tables render only for regions with something new or worsening; chronic-flat endpoints collapse to one line. The `≥5,000 calls/week` filter still applies.
 - Key takeaways cites specific endpoints, `Nx worse` regressions, and a regression-cluster hypothesis if multiple endpoints moved together.
 - Only the requested `--scope` regions appear; no other-region PDs/CFDs leak in.
+- "Tagged outside support" lists only threads where the outgoing on-call replied (omitted when there are none). No HTML anywhere in the doc.
 - Output path printed to user; nothing auto-sent or committed.
 
 ## Coda push (REMOVED 2026-05-25)

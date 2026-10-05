@@ -1,7 +1,7 @@
 {
   "name": "oncall-handover",
   "description": "ClearTax e-invoicing team on-call handover — config-driven multi-region (IND/KSA/EU/MY/MEA) weekly handover doc from PagerDuty, Slack L3 threads and CubeAPM. Drafts only.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Vashistha Garg",
     "email": "vashistha.garg@clear.in"
