@@ -245,7 +245,7 @@ scopes:
     label: MEA (UAE / Oman / Jordan)
     # Auto-discovered 2026-06-15 — MEDIUM overall (services HIGH/verified; PD routing LOW — see notes). MEA e-invoicing is early:
     # UAE PINT-AE + Oman Fawtara (go-live ~Aug 2026, discovery stage) + Jordan JoFotara. No dedicated PD service exists YET.
-    output: { repo_path: ~/Desktop/einvoicing-core, subdir: "docs/oncall-handover/mea" }   # → ~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md
+    output: { repo_path: ~/Desktop/einvoicing-india-mea-docs, subdir: "mea-oncall-handover/{year}", filename: "{weekstart}.md" }   # → ~/Desktop/einvoicing-india-mea-docs/mea-oncall-handover/2026/<weekstart>.md (team docs repo; add the row to mea-oncall-handover/README.md)
     pd_service_prefixes:
       # ✅ VERIFIED 2026-09-21 by exhaustive paging (2033 incidents, full 90d window, more:false — no sampling gap).
       # MEA DOES have a dedicated PD service. The old guess "[E-Invoicing-MEA]" never matched anything because the
@@ -272,9 +272,9 @@ scopes:
     # `clear-peppol-ap-outbound-demo-prod-oci-mea-consumer`).
     l3_channels:
       - { name: "#einvoice-mea-l3-support", id: C0AB8EAH9A6 }   # HIGH confidence, live (Tabby UAE prod issues); Jira project MEA (board 1588). Does NOT use #einvoice-l3-support.
-    l3_workflow_bot: {}   # no dedicated MEA escalation workflow found as of 2026-06-15 → Step 4 falls back to reply_count>=5. Re-check after MEA GA; add the bot here once it exists.
+    l3_workflow_bot: { name: "Escalate MEA customer issues to L3", id: B0BDT8D0SFL }   # verified 2026-11-10: every MEA escalation in #einvoice-mea-l3-support is posted by this bot
     jira_projects: [MEA]  # board 1588; pass 2 still works here even without a workflow bot, since it queries JIRA directly rather than Slack
-    # oncall_handle: not known yet — find the MEA on-call user-group ID and add it; v-oncall-tags skips this scope until then.
+    oncall_handle: { id: S0ATCJX9XJP, name: "MEA on-call" }   # verified 2026-11-10: the usergroup the MEA L3 workflow tags
     cubeapm_services:
       - einvoicing-core-prod-oci-mea-http
       - einvoicing-integrations-prod-oci-mea-http
