@@ -13,7 +13,7 @@ You are drafting a weekly E-Invoicing on-call handover doc. Run every Monday mor
 - `--week-start <YYYY-MM-DD>` (optional) — Monday IST of the week to document. Default: previous Monday relative to today.
 - `--outgoing <name>` (optional) — outgoing primary on-call. Default: the runner's name.
 - `--shadow <name>` (optional) — outgoing shadow on-call (intern, L3 threads). Omit if no shadow.
-- `--out <path>` (optional) — output markdown path. Default: resolved from config per scope (see Step 7). IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/oncall-handover-<weekstart>.md`; EU/MY/MEA → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/oncall-handover-<weekstart>.md`. Create parent dirs if missing.
+- `--out <path>` (optional) — output markdown path. Default: resolved from config per scope (see Step 7). IND/KSA → `~/Desktop/e-invoicing-be/oncall-handover/<year>/oncall-handover-<weekstart>.md`; EU/MY → `~/Desktop/einvoicing-core/docs/oncall-handover/<scope>/oncall-handover-<weekstart>.md`; MEA → `~/Desktop/einvoicing-india-mea-docs/mea-oncall-handover/<year>/<weekstart>.md`. Create parent dirs if missing.
 
 ## Step 0 — Load config (do this first, every run)
 
@@ -60,6 +60,12 @@ Short-term Fix and Long-term Fix collapse into ONE `Fix` column — in practice 
 ### <R label> — closed this week, raised earlier (N)
 [Ticket | Customer | Issue | Closed as | Engineering Owner | Slack Thread]
 Escalations whose thread predates this window but whose JIRA ticket reached a done status during it (Step 4, pass 2). Omit the sub-section when N = 0.
+
+### Open CFDs handed over
+[# | Customer | Ticket | Why it's open]
+
+### <R label> — L3 response
+[Metric | Value] — fixed 8 rows, produced by Step 4c. Always present for every in-scope region, even in a quiet week.
 
 ## Tagged outside support — N tags in M channels
 [Channel | Asked by | Ask | Type | Outcome | Link] — produced by the sibling skill **v-oncall-tags** (Step 4b): only threads where the on-call replied. Open first. Omit when N = 0.
@@ -210,6 +216,38 @@ Group pass 1 into one sub-table per in-scope region (header `### <label> — N r
 - **Open CFDs handed over** — the open/awaiting workflow CFDs (customer + ticket).
 Nothing else under the CFD tables — no "other customer threads" or "loose ends" lists (user removed them 2026-10-05).
 
+## Step 4c — L3 response table (every region, every week)
+
+One small table per in-scope region, placed right after **Open CFDs handed over** and before Critical-API Health. It covers the same pass-1 escalations as the `raised this week` table, so its counts must agree with that table's Status column. Use exactly these rows and names — no p90, no "engineer or PM" row, no baseline column (user decision 2026-11-10):
+
+```
+### <R label> — L3 response
+
+| Metric | Value |
+|---|---|
+| Escalations | N (P0 a · P1 b) |
+| First reply | median <x> |
+| No reply | n (#ids) |
+| Answered: not a bug or explained | n · median <x> |
+| Fixed by us | n (#ids) · median <x> (<min>–<max>) |
+| Handed to another team | n: <Team> k (#ids) · <Team> k (#ids) … |
+| Still open | n (#ids) |
+| Linked Jira | n / N |
+```
+
+**How to measure** — read every pass-1 thread with `response_format: "detailed"` so each message carries its timestamp (for > ~10 threads, split the reads across two subagents and have them return one pipe-separated line per thread: first engineer reply time + name, outcome time + author):
+- **Clock start** = the escalation post's own `ts` (the L2 workflow post, or the parent message for heuristic-mode scopes).
+- **First reply** = first message from someone on the shared `engineers` roster. Bots (Clarity, PagerDuty, workflow), the submitter, L2/CS and PMs/product don't count. A "checking" or tag ping counts — it's still the first response. Report the median only.
+- **No reply** = escalations with no engineer reply at all by the time the doc is written; list the `#` ids from the CFD table.
+- **Answered: not a bug or explained** = threads closed by an answer (not a bug, payload/customer issue, expected behaviour, explanation given). Time = the message that gave the root cause / explanation, not the later close.
+- **Fixed by us** = a code or config fix shipped by this region's e-invoicing backend team. Time = the "fix deployed" message. Show the median and the min–max range.
+- **Handed to another team** = the resolution sits with, or came from, a team outside the region's backend: FE, Platform, Product (feature request / awaiting decision), DevOps, govt (FTA/OTA/LHDN/IRP…), an external AP, etc. Fixes delivered by FE or Platform belong here, NOT under "Fixed by us". Group by team with counts and `#` ids. An escalation may appear here and in another row (e.g. still open with FE).
+- **Still open** = Status is Open / Awaiting product / no outcome yet. An answered thread merely waiting for the customer to confirm counts as answered, not open.
+- **Linked Jira** = escalations whose template or thread carries a Jira key, over the week's total.
+- **Escalations** = the pass-1 count; split by the template's `Priority` field (P0/P1/P2 as present).
+
+Format durations as `<n> min` under an hour, else `<n.n> h`. If a scope is in heuristic mode (no `l3_workflow_bot`), still render the table and add one line under it: `Counts from reply_count ≥ 5 threads — no L3 workflow configured.`
+
 ## Step 4b — Tagged outside support
 
 Follow the sibling skill **v-oncall-tags** (`skills/v-oncall-tags/SKILL.md` in this plugin) for the same week and scopes, with `--oncall` = this doc's outgoing on-call, and paste its section into the doc. Why it exists: on-call is regularly tagged in infra, product, security and release channels; none of those asks reach Steps 2–4, so an unanswered one silently disappears at handover. If no in-scope block has an `oncall_handle`, skip it and say so in one line.
@@ -319,13 +357,13 @@ Under the top-3 tables, a `**Key takeaways:**` block, 3-5 bullets:
 
 ## Step 7 — Save and notify
 
-**Resolve the output location from config:** use the **first in-scope block that defines an `output:` override**; otherwise fall back to `meta.output`. (So the default `ind,ksa` run → `meta.output` = `~/Desktop/e-invoicing-be`; a single `eu`/`my`/`mea` run → that scope's override = `~/Desktop/einvoicing-core`.) Build the path as `<output.repo_path>/<output.subdir>/oncall-handover-<weekstart>.md`, expanding `{year}` in `subdir` to the weekstart's year. Create the full parent-dir chain if missing. **No scope suffix on the filename** — the folder path already identifies the region (e.g. `.../docs/oncall-handover/eu/oncall-handover-2026-06-08.md`).
+**Resolve the output location from config:** use the **first in-scope block that defines an `output:` override**; otherwise fall back to `meta.output`. (So the default `ind,ksa` run → `meta.output` = `~/Desktop/e-invoicing-be`; a single `eu`/`my`/`mea` run → that scope's override = `~/Desktop/einvoicing-core`.) Build the path as `<output.repo_path>/<output.subdir>/oncall-handover-<weekstart>.md`, expanding `{year}` in `subdir` to the weekstart's year. If the block sets `output.filename`, use it instead of `oncall-handover-<weekstart>.md`, expanding `{weekstart}`. Create the full parent-dir chain if missing. **No scope suffix on the filename** — the folder path already identifies the region (e.g. `.../docs/oncall-handover/eu/oncall-handover-2026-06-08.md`).
 
 Concretely with the shipped config:
 - `ind,ksa` (default) → `~/Desktop/e-invoicing-be/oncall-handover/<year>/oncall-handover-<weekstart>.md`
 - `eu` → `~/Desktop/einvoicing-core/docs/oncall-handover/eu/oncall-handover-<weekstart>.md`
 - `my` → `~/Desktop/einvoicing-core/docs/oncall-handover/my/oncall-handover-<weekstart>.md`
-- `mea` → `~/Desktop/einvoicing-core/docs/oncall-handover/mea/oncall-handover-<weekstart>.md`
+- `mea` → `~/Desktop/einvoicing-india-mea-docs/mea-oncall-handover/<year>/<weekstart>.md` — the team docs repo; also add the week's row to `mea-oncall-handover/README.md`. Write it in a fresh worktree off `origin/main` on branch `oncall-handover/<weekstart>-mea`, never in the shared main checkout.
 
 **Plain markdown only — no HTML anywhere in the doc** (no `<style>`, `<div>`, `<ul>`, `<li>`, `<br>`). The Claude desktop preview, where the user reads it, shows HTML as raw text (user feedback 2026-10-05). Tables are markdown tables; multi-item cells join items with ` · `.
 
@@ -387,6 +425,7 @@ Do **not** auto-send to anyone or auto-update any Slack on-call alias.
 - Top-3 tables render only for regions with something new or worsening; chronic-flat endpoints collapse to one line. The `≥5,000 calls/week` filter still applies.
 - Key takeaways cites specific endpoints, `Nx worse` regressions, and a regression-cluster hypothesis if multiple endpoints moved together.
 - Only the requested `--scope` regions appear; no other-region PDs/CFDs leak in.
+- Every in-scope region has an `L3 response` table (Step 4c) with exactly the 8 named rows, between Open CFDs handed over and Critical-API Health; its Fixed / Answered / Still open counts match the CFD table's statuses, and FE/Platform fixes sit under "Handed to another team".
 - "Tagged outside support" lists only threads where the outgoing on-call replied (omitted when there are none). No HTML anywhere in the doc.
 - Output path printed to user; nothing auto-sent or committed.
 
